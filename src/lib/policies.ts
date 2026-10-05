@@ -85,9 +85,9 @@ export async function savePolicyDraft(input: {
   policyVersionsState = [
     {
       id: `pv-${Date.now()}`,
-      updatedAt: policyState.updatedAt,
-      updatedBy: policyState.updatedBy,
-      status: "draft",
+      updatedAt: policyState.updatedAt ?? new Date().toISOString(),
+      updatedBy: policyState.updatedBy ?? "Admin",
+      status: "draft" as const,
       englishPreview: policyState.englishContent.slice(0, 120),
       arabicPreview: policyState.arabicContent.slice(0, 120),
     },
@@ -113,9 +113,9 @@ export async function publishPolicy(input: {
   policyVersionsState = [
     {
       id: `pv-${Date.now()}`,
-      updatedAt: policyState.updatedAt,
-      updatedBy: policyState.updatedBy,
-      status: "published",
+      updatedAt: policyState.updatedAt ?? new Date().toISOString(),
+      updatedBy: policyState.updatedBy ?? "Admin",
+      status: "published" as const,
       englishPreview: policyState.englishContent.slice(0, 120),
       arabicPreview: policyState.arabicContent.slice(0, 120),
     },

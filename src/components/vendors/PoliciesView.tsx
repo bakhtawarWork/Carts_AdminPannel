@@ -659,7 +659,7 @@ function StatusBadge({
           published ? "bg-emerald-500" : "bg-amber-500"
         }`}
       />
-      {policyStatusLabel(status)}
+      {policyStatusLabel(status ?? "draft")}
     </span>
   );
 }
