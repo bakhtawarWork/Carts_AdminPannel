@@ -153,7 +153,10 @@ function parseDateEnd(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function filterUsers(items: UserRecord[], query: UsersQuery) {
+function filterUsers(
+  items: UserRecord[],
+  query: Omit<UsersQuery, "page" | "pageSize">,
+) {
   const needle = query.search?.trim().toLowerCase() ?? "";
   const joinedFrom = query.joinedFrom ? parseDateStart(query.joinedFrom) : null;
   const joinedTo = query.joinedTo ? parseDateEnd(query.joinedTo) : null;

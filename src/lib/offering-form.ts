@@ -4,6 +4,7 @@ import type {
   OfferingBilingualLine,
   OfferingFormData,
   OfferingGalleryImage,
+  OfferingOptionItem,
   OfferingOptionSection,
 } from "@/lib/types";
 import {
