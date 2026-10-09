@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useVendorFilterOptions } from "@/hooks/useVendorFilterOptions";
 import {
   BANNER_REDIRECTION_OPTIONS,
   BANNER_TYPE_OPTIONS,
@@ -16,6 +17,7 @@ import {
   validateBannerImageFile,
 } from "@/lib/banners";
 import { readImageFileAsDataUrl } from "@/lib/offering-image-upload";
+import { getOfferingDetails, getVendorOfferings } from "@/services/offerings";
 import type { BannerFormData, BannerType } from "@/lib/types";
 
 const inputClass =
@@ -33,6 +35,11 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const { options: vendorOptions = [], loading: vendorsLoading } =
+    useVendorFilterOptions({ enabled: form.type === "sub" });
+  const [offerings, setOfferings] = useState<{ id: string; label: string }[]>([]);
+  const [offeringsLoading, setOfferingsLoading] = useState(false);
+
   useEffect(() => {
     if (!bannerId) return;
 
@@ -44,6 +51,42 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
       try {
         const record = await fetchBannerById(bannerId!);
         if (cancelled) return;
+
+        let redirectionPath = "";
+        let selectedVendorId = "";
+        let selectedOfferingId = "";
+
+        const dest = record.redirectionPath ?? "";
+        if (
+          dest.startsWith("vendors/") ||
+          record.actionType === "vendor" ||
+          dest === "vendor_details"
+        ) {
+          redirectionPath = "vendor_details";
+          selectedVendorId = record.referenceId || dest.replace("vendors/", "");
+        } else if (
+          dest.startsWith("offerings/") ||
+          record.actionType === "offering" ||
+          dest === "offerings_details"
+        ) {
+          redirectionPath = "offerings_details";
+          selectedOfferingId =
+            record.referenceId || dest.replace("offerings/", "");
+          if (selectedOfferingId) {
+            try {
+              const details = await getOfferingDetails(selectedOfferingId);
+              if (details?._vendor) {
+                selectedVendorId =
+                  typeof details._vendor === "object"
+                    ? details._vendor._id ?? ""
+                    : details._vendor;
+              }
+            } catch {
+              // ignore detail lookup error
+            }
+          }
+        }
+
         setForm({
           type: record.type,
           name: record.name,
@@ -51,7 +94,9 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
           imageUrl: record.imageUrl,
           sequence: String(record.sequence),
           isActive: record.isActive,
-          redirectionPath: record.redirectionPath ?? "",
+          redirectionPath,
+          selectedVendorId,
+          selectedOfferingId,
         });
       } catch (err) {
         if (!cancelled) {
@@ -73,6 +118,44 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
     };
   }, [bannerId]);
 
+  useEffect(() => {
+    if (!form.selectedVendorId || form.redirectionPath !== "offerings_details") {
+      setOfferings([]);
+      return;
+    }
+
+    let cancelled = false;
+    setOfferingsLoading(true);
+
+    getVendorOfferings(form.selectedVendorId)
+      .then((items) => {
+        if (cancelled) return;
+        const mapped = items
+          .map((item) => {
+            const id = item._id || item.id || "";
+            const nameEn = item.name?.en ?? "";
+            const nameAr = item.name?.ar ?? "";
+            const label =
+              nameEn && nameAr
+                ? `${nameEn} / ${nameAr}`
+                : nameEn || nameAr || id;
+            return { id, label };
+          })
+          .filter((item) => Boolean(item.id));
+        setOfferings(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setOfferings([]);
+      })
+      .finally(() => {
+        if (!cancelled) setOfferingsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.selectedVendorId, form.redirectionPath]);
+
   function update<K extends keyof BannerFormData>(
     key: K,
     value: BannerFormData[K],
@@ -86,6 +169,8 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
       ...prev,
       type,
       redirectionPath: type === "main" ? "" : prev.redirectionPath,
+      selectedVendorId: type === "main" ? "" : prev.selectedVendorId,
+      selectedOfferingId: type === "main" ? "" : prev.selectedOfferingId,
     }));
     setError(null);
   }
@@ -258,22 +343,113 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
             </Field>
 
             {form.type === "sub" ? (
-              <Field label="Redirection path">
-                <select
-                  value={form.redirectionPath}
-                  onChange={(event) =>
-                    update("redirectionPath", event.target.value)
-                  }
-                  className={inputClass}
-                >
-                  <option value="">Select screen</option>
-                  {BANNER_REDIRECTION_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <>
+                <Field label="Redirection path">
+                  <select
+                    value={form.redirectionPath}
+                    onChange={(event) => {
+                      const nextPath = event.target.value;
+                      setForm((prev) => ({
+                        ...prev,
+                        redirectionPath: nextPath,
+                        selectedVendorId: "",
+                        selectedOfferingId: "",
+                      }));
+                      setError(null);
+                    }}
+                    className={inputClass}
+                  >
+                    <option value="">Select screen</option>
+                    {BANNER_REDIRECTION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                {form.redirectionPath === "vendor_details" ? (
+                  <Field label="Select vendor">
+                    <select
+                      value={form.selectedVendorId ?? ""}
+                      onChange={(event) =>
+                        update("selectedVendorId", event.target.value)
+                      }
+                      disabled={vendorsLoading}
+                      className={inputClass}
+                    >
+                      <option value="">
+                        {vendorsLoading
+                          ? "Loading vendors…"
+                          : "Select a vendor"}
+                      </option>
+                      {vendorOptions.map((vendor) => (
+                        <option key={vendor.id} value={vendor.id}>
+                          {vendor.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : null}
+
+                {form.redirectionPath === "offerings_details" ? (
+                  <>
+                    <Field label="Select vendor">
+                      <select
+                        value={form.selectedVendorId ?? ""}
+                        onChange={(event) => {
+                          const nextVendorId = event.target.value;
+                          setForm((prev) => ({
+                            ...prev,
+                            selectedVendorId: nextVendorId,
+                            selectedOfferingId: "",
+                          }));
+                          setError(null);
+                        }}
+                        disabled={vendorsLoading}
+                        className={inputClass}
+                      >
+                        <option value="">
+                          {vendorsLoading
+                            ? "Loading vendors…"
+                            : "Select a vendor"}
+                        </option>
+                        {vendorOptions.map((vendor) => (
+                          <option key={vendor.id} value={vendor.id}>
+                            {vendor.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <Field label="Select offering">
+                      <select
+                        value={form.selectedOfferingId ?? ""}
+                        onChange={(event) =>
+                          update("selectedOfferingId", event.target.value)
+                        }
+                        disabled={!form.selectedVendorId || offeringsLoading}
+                        className={inputClass}
+                      >
+                        <option value="">
+                          {!form.selectedVendorId
+                            ? "Select a vendor first"
+                            : offeringsLoading
+                              ? "Loading offerings…"
+                              : offerings.length === 0
+                                ? "No offerings found for this vendor"
+                                : "Select an offering"}
+                        </option>
+                        {offerings.map((offering) => (
+                          <option key={offering.id} value={offering.id}>
+                            {offering.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </>
+                ) : null}
+              </>
             ) : null}
 
             <Field label="Status">

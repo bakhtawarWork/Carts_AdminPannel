@@ -23,13 +23,7 @@ export const BANNER_TYPE_OPTIONS = [
 
 export const BANNER_REDIRECTION_OPTIONS = [
   { value: "vendor_details", label: "Vendor details" },
-  { value: "offerings_details", label: "Offerings details" },
-  { value: "home_page", label: "Home page" },
-  { value: "order_screen", label: "Order screen" },
-  { value: "favourite_screen", label: "Favourite screen" },
-  { value: "profile_screen", label: "Profile screen" },
-  { value: "saved_address", label: "Saved address" },
-  { value: "wishlist_screen", label: "Wishlist screen" },
+  { value: "offerings_details", label: "Offering details" },
 ] as const;
 
 export type BannerRedirectionPath =
@@ -60,6 +54,8 @@ export function mapApiBannerToRecord(item: BannerApiItem): BannerRecord {
     sequence: item.position ?? 1,
     isActive: item.status === "active",
     redirectionPath: item.destination || undefined,
+    actionType: item.actionType,
+    referenceId: item.referenceId,
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || new Date().toISOString(),
   };
@@ -74,6 +70,8 @@ export function createEmptyBannerForm(type: BannerType = "main"): BannerFormData
     sequence: "1",
     isActive: true,
     redirectionPath: "",
+    selectedVendorId: "",
+    selectedOfferingId: "",
   };
 }
 
@@ -143,6 +141,12 @@ export function formatBannerTypeLabel(type: BannerType) {
 
 export function formatBannerRedirectionLabel(path?: string) {
   if (!path) return "—";
+  if (path === "vendor_details" || path.startsWith("vendors/")) {
+    return "Vendor details";
+  }
+  if (path === "offerings_details" || path.startsWith("offerings/")) {
+    return "Offering details";
+  }
   const match = BANNER_REDIRECTION_OPTIONS.find((option) => option.value === path);
   return match?.label ?? path;
 }
@@ -160,10 +164,18 @@ export function validateBannerForm(data: BannerFormData): string | null {
     if (!data.redirectionPath.trim()) {
       return "Redirection path is required for sub banners.";
     }
-    const isValidPath = BANNER_REDIRECTION_OPTIONS.some(
-      (option) => option.value === data.redirectionPath,
-    );
-    if (!isValidPath) {
+    if (data.redirectionPath === "vendor_details") {
+      if (!data.selectedVendorId) {
+        return "Please select a vendor for redirection.";
+      }
+    } else if (data.redirectionPath === "offerings_details") {
+      if (!data.selectedVendorId) {
+        return "Please select a vendor.";
+      }
+      if (!data.selectedOfferingId) {
+        return "Please select an offering for redirection.";
+      }
+    } else {
       return "Select a valid redirection screen.";
     }
   }
@@ -205,8 +217,18 @@ export async function saveBannerForm(
     },
   };
 
-  if (data.type === "sub" && data.redirectionPath?.trim()) {
-    payload.destination = data.redirectionPath.trim();
+  if (data.type === "sub") {
+    if (data.redirectionPath === "vendor_details" && data.selectedVendorId) {
+      payload.destination = `vendors/${data.selectedVendorId}`;
+      payload.actionType = "vendor";
+      payload.referenceId = data.selectedVendorId;
+    } else if (data.redirectionPath === "offerings_details" && data.selectedOfferingId) {
+      payload.destination = `offerings/${data.selectedOfferingId}`;
+      payload.actionType = "offering";
+      payload.referenceId = data.selectedOfferingId;
+    } else if (data.redirectionPath?.trim()) {
+      payload.destination = data.redirectionPath.trim();
+    }
   }
 
   const created = await createBanner(payload);
@@ -245,8 +267,18 @@ export async function updateBannerForm(
     status: data.isActive ? "active" : "inactive",
   };
 
-  if (data.type === "sub" && data.redirectionPath?.trim()) {
-    payload.destination = data.redirectionPath.trim();
+  if (data.type === "sub") {
+    if (data.redirectionPath === "vendor_details" && data.selectedVendorId) {
+      payload.destination = `vendors/${data.selectedVendorId}`;
+      payload.actionType = "vendor";
+      payload.referenceId = data.selectedVendorId;
+    } else if (data.redirectionPath === "offerings_details" && data.selectedOfferingId) {
+      payload.destination = `offerings/${data.selectedOfferingId}`;
+      payload.actionType = "offering";
+      payload.referenceId = data.selectedOfferingId;
+    } else if (data.redirectionPath?.trim()) {
+      payload.destination = data.redirectionPath.trim();
+    }
   }
 
   if (data.imageUrl.startsWith("data:")) {

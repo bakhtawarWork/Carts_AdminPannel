@@ -836,6 +836,8 @@ export type BannerRecord = {
   sequence: number;
   isActive: boolean;
   redirectionPath?: string;
+  actionType?: string;
+  referenceId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -848,6 +850,8 @@ export type BannerFormData = {
   sequence: string;
   isActive: boolean;
   redirectionPath: string;
+  selectedVendorId?: string;
+  selectedOfferingId?: string;
   imageFileName?: string;
   imageFileType?: string;
 };
