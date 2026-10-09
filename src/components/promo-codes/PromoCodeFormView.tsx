@@ -3,16 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useVendorFilterOptions } from "@/hooks/useVendorFilterOptions";
 import {
   PROMO_CODE_TYPE_OPTIONS,
-  PROMO_CODE_VENDOR_OPTIONS,
+  cartsShareSliderMax,
   createEmptyPromoCodeForm,
   fetchPromoCodeForm,
   formatVendorHeader,
+  getPromoCodeSaveErrorMessage,
   savePromoCodeForm,
   validatePromoCodeForm,
   vendorsShareFromCarts,
 } from "@/lib/promo-code-form";
+import { getVendorById } from "@/lib/vendors";
 import type { PromoCodeFormData, PromoCodeType } from "@/lib/types";
 
 const inputClass =
@@ -26,9 +29,12 @@ export default function PromoCodeFormView({ promoId }: PromoCodeFormViewProps) {
   const router = useRouter();
   const isEdit = Boolean(promoId);
   const [form, setForm] = useState<PromoCodeFormData>(createEmptyPromoCodeForm);
+  const [original, setOriginal] = useState<PromoCodeFormData | null>(null);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { options: vendorOptions, loading: vendorsLoading } =
+    useVendorFilterOptions({ enabled: !isEdit });
 
   useEffect(() => {
     if (!promoId) return;
@@ -46,6 +52,7 @@ export default function PromoCodeFormView({ promoId }: PromoCodeFormViewProps) {
           return;
         }
         setForm(data);
+        setOriginal(data);
       } catch {
         if (!cancelled) setError("Could not load promo code.");
       } finally {
@@ -78,10 +85,10 @@ export default function PromoCodeFormView({ promoId }: PromoCodeFormViewProps) {
     setSaving(true);
     setError(null);
     try {
-      await savePromoCodeForm(form);
+      await savePromoCodeForm(form, isEdit ? original : null);
       router.push("/promo-codes");
-    } catch {
-      setError("Could not save promo code. Please try again.");
+    } catch (caught) {
+      setError(getPromoCodeSaveErrorMessage(caught));
     } finally {
       setSaving(false);
     }
@@ -95,7 +102,18 @@ export default function PromoCodeFormView({ promoId }: PromoCodeFormViewProps) {
     );
   }
 
-  const vendorsShare = vendorsShareFromCarts(form.cartsSharePercent);
+  const isPercentage = form.promoCodeType === "percentage";
+  const amountNumber = Number(form.amountQr);
+  const shareMax = cartsShareSliderMax(form.promoCodeType, form.amountQr);
+  const cartsShareValue = Math.min(
+    Math.max(0, form.cartsSharePercent),
+    shareMax || 0,
+  );
+  const vendorsShare = vendorsShareFromCarts(cartsShareValue, {
+    promoCodeType: form.promoCodeType,
+    amount: Number.isFinite(amountNumber) ? amountNumber : 0,
+  });
+  const shareUnit = isPercentage ? "%" : "QR";
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
@@ -129,14 +147,27 @@ export default function PromoCodeFormView({ promoId }: PromoCodeFormViewProps) {
               <Field label="Vendor">
                 <select
                   value={form.vendorId}
-                  onChange={(event) =>
-                    updateField("vendorId", event.target.value)
-                  }
+                  disabled={vendorsLoading}
+                  onChange={(event) => {
+                    const nextId = event.target.value;
+                    const vendor =
+                      nextId === "all" ? null : getVendorById(nextId);
+                    setForm((prev) => ({
+                      ...prev,
+                      vendorId: nextId,
+                      vendorEnglish: vendor?.englishName ?? "",
+                      vendorArabic: vendor?.arabicName ?? "",
+                    }));
+                    setError(null);
+                  }}
                   className={inputClass}
                 >
-                  {PROMO_CODE_VENDOR_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+                  <option value="all">
+                    {vendorsLoading ? "Loading vendors…" : "All"}
+                  </option>
+                  {vendorOptions.map((vendor) => (
+                    <option key={vendor.id} value={vendor.id}>
+                      {vendor.label}
                     </option>
                   ))}
                 </select>
@@ -157,12 +188,42 @@ export default function PromoCodeFormView({ promoId }: PromoCodeFormViewProps) {
             <Field label="Promo code type">
               <select
                 value={form.promoCodeType}
-                onChange={(event) =>
-                  updateField(
-                    "promoCodeType",
-                    event.target.value as PromoCodeType | "",
-                  )
-                }
+                onChange={(event) => {
+                  const nextType = event.target.value as PromoCodeType | "";
+                  setForm((prev) => {
+                    if (nextType === prev.promoCodeType) return prev;
+
+                    if (nextType === "percentage") {
+                      const amount = Number(prev.amountQr);
+                      return {
+                        ...prev,
+                        promoCodeType: nextType,
+                        amountQr:
+                          Number.isFinite(amount) && amount > 0 && amount <= 100
+                            ? prev.amountQr
+                            : "",
+                        cartsSharePercent: Math.min(
+                          100,
+                          Math.max(0, prev.cartsSharePercent),
+                        ),
+                      };
+                    }
+
+                    if (nextType === "fixed") {
+                      return {
+                        ...prev,
+                        promoCodeType: nextType,
+                        cartsSharePercent: Math.min(
+                          Math.max(0, prev.cartsSharePercent),
+                          Number(prev.amountQr) || 0,
+                        ),
+                      };
+                    }
+
+                    return { ...prev, promoCodeType: nextType };
+                  });
+                  setError(null);
+                }}
                 className={inputClass}
               >
                 {PROMO_CODE_TYPE_OPTIONS.map((option) => (
@@ -209,53 +270,73 @@ export default function PromoCodeFormView({ promoId }: PromoCodeFormViewProps) {
               </label>
             </div>
 
-            {isEdit ? (
-              <>
-                <Field label="Amount (QR)">
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.amountQr}
-                    onChange={(event) =>
-                      updateField("amountQr", event.target.value)
-                    }
-                    className={inputClass}
-                  />
-                </Field>
+            <Field label={isPercentage ? "Amount (%)" : "Amount (QR)"}>
+              <input
+                type="number"
+                min="0"
+                max={isPercentage ? 100 : undefined}
+                value={form.amountQr}
+                onChange={(event) => {
+                  const nextAmount = event.target.value;
+                  setForm((prev) => {
+                    const max = cartsShareSliderMax(
+                      prev.promoCodeType,
+                      nextAmount,
+                    );
+                    return {
+                      ...prev,
+                      amountQr: nextAmount,
+                      cartsSharePercent: Math.min(
+                        Math.max(0, prev.cartsSharePercent),
+                        max,
+                      ),
+                    };
+                  });
+                  setError(null);
+                }}
+                className={inputClass}
+              />
+            </Field>
 
-                <Field label="Carts share">
-                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={form.cartsSharePercent}
-                      onChange={(event) =>
-                        updateField(
-                          "cartsSharePercent",
-                          Number(event.target.value),
-                        )
-                      }
-                      className="w-full accent-brand"
-                    />
-                    <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                      <span>0</span>
-                      <span className="font-semibold tabular-nums text-slate-900">
-                        {form.cartsSharePercent}
-                      </span>
-                      <span>100</span>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Vendors share:{" "}
-                      <span className="font-semibold text-slate-800">
-                        {vendorsShare}
-                      </span>
-                    </p>
-                  </div>
-                </Field>
-              </>
-            ) : null}
+            <Field
+              label={isPercentage ? "Carts share (%)" : "Carts share (QR)"}
+            >
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={shareMax || 0}
+                  step={1}
+                  value={cartsShareValue}
+                  disabled={shareMax <= 0}
+                  onChange={(event) =>
+                    updateField(
+                      "cartsSharePercent",
+                      Number(event.target.value),
+                    )
+                  }
+                  className="w-full accent-brand disabled:opacity-50"
+                />
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                  <span>0{shareUnit === "%" ? "%" : ""}</span>
+                  <span className="font-semibold tabular-nums text-slate-900">
+                    {cartsShareValue}
+                    {shareUnit === "%" ? "%" : ` ${shareUnit}`}
+                  </span>
+                  <span>
+                    {shareMax}
+                    {shareUnit === "%" ? "%" : ""}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Vendors share:{" "}
+                  <span className="font-semibold text-slate-800">
+                    {vendorsShare}
+                    {shareUnit === "%" ? "%" : ` ${shareUnit}`}
+                  </span>
+                </p>
+              </div>
+            </Field>
           </div>
 
           {error ? (

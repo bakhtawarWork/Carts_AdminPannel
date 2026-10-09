@@ -5,10 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 import { formatVendorDate } from "@/lib/vendors";
 import {
   createVendorUser,
+  fetchVendorUserById,
   fetchVendorUsers,
+  getVendorUserSaveErrorMessage,
   setVendorUserBlocked,
   updateVendorUser,
   userInitials,
+  vendorUserFormFromRecord,
 } from "@/lib/vendor-users";
 import type { VendorRecord, VendorUserFormData, VendorUserRecord } from "@/lib/types";
 
@@ -20,6 +23,7 @@ const emptyForm: VendorUserFormData = {
   email: "",
   mobile: "",
   password: "",
+  isBlocked: false,
 };
 
 type VendorUsersViewProps = {
@@ -38,6 +42,7 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
   const [activeUser, setActiveUser] = useState<VendorUserRecord | null>(null);
   const [form, setForm] = useState<VendorUserFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -79,16 +84,30 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
     setModalMode("info");
   }
 
-  function openEdit(user: VendorUserRecord) {
+  async function openEdit(user: VendorUserRecord) {
     setActiveUser(user);
-    setForm({
-      name: user.name,
-      email: user.email,
-      mobile: user.mobile,
-      password: "",
-    });
+    setForm(vendorUserFormFromRecord(user));
     setModalMode("edit");
     setError(null);
+    setMessage(null);
+    setEditLoading(true);
+
+    try {
+      const details = await fetchVendorUserById(user.id, vendorId);
+      setActiveUser(details);
+      setForm((prev) => ({
+        ...vendorUserFormFromRecord(details),
+        password: prev.password || "",
+      }));
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not load user details.",
+      );
+    } finally {
+      setEditLoading(false);
+    }
   }
 
   function openBlock(user: VendorUserRecord) {
@@ -101,6 +120,7 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
     setModalMode(null);
     setActiveUser(null);
     setForm(emptyForm);
+    setEditLoading(false);
   }
 
   function updateField<K extends keyof VendorUserFormData>(
@@ -114,12 +134,12 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
     setSaving(true);
     setError(null);
     try {
-      await createVendorUser(vendorId, form);
+      const result = await createVendorUser(vendorId, form);
       await loadUsers();
       closeModal();
-      setMessage("User created successfully.");
-    } catch {
-      setError("Could not create user. Fill in all fields.");
+      setMessage(result.message || "Vendor user created successfully.");
+    } catch (caught) {
+      setError(getVendorUserSaveErrorMessage(caught));
     } finally {
       setSaving(false);
     }
@@ -130,12 +150,12 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
     setSaving(true);
     setError(null);
     try {
-      await updateVendorUser(vendorId, activeUser.id, form);
+      const result = await updateVendorUser(vendorId, activeUser.id, form);
       await loadUsers();
       closeModal();
-      setMessage("User updated successfully.");
-    } catch {
-      setError("Could not update user.");
+      setMessage(result.message || "User updated successfully.");
+    } catch (caught) {
+      setError(getVendorUserSaveErrorMessage(caught));
     } finally {
       setSaving(false);
     }
@@ -146,20 +166,22 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
     setSaving(true);
     setError(null);
     try {
-      await setVendorUserBlocked(
+      const result = await setVendorUserBlocked(
         vendorId,
         activeUser.id,
         !activeUser.blocked,
+        activeUser,
       );
       await loadUsers();
       closeModal();
       setMessage(
-        activeUser.blocked
-          ? "User unblocked successfully."
-          : "User blocked successfully.",
+        result.message ||
+          (activeUser.blocked
+            ? "User unblocked successfully."
+            : "User blocked successfully."),
       );
-    } catch {
-      setError("Could not update user status.");
+    } catch (caught) {
+      setError(getVendorUserSaveErrorMessage(caught));
     } finally {
       setSaving(false);
     }
@@ -249,7 +271,7 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
               user={user}
               index={index + 1}
               onInfo={() => openInfo(user)}
-              onEdit={() => openEdit(user)}
+              onEdit={() => void openEdit(user)}
               onBlock={() => openBlock(user)}
             />
           ))}
@@ -301,7 +323,7 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
               <button
                 type="button"
                 onClick={handleEdit}
-                disabled={saving}
+                disabled={saving || editLoading}
                 className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Saving…" : "Save changes"}
@@ -309,12 +331,17 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
             </>
           }
         >
-          <UserFormFields
-            form={form}
-            onChange={updateField}
-            passwordHint="Leave blank to keep the current password"
-            passwordRequired={false}
-          />
+          {editLoading ? (
+            <p className="py-6 text-center text-sm text-slate-500">
+              Loading user details…
+            </p>
+          ) : (
+            <UserFormFields
+              form={form}
+              onChange={updateField}
+              mode="edit"
+            />
+          )}
           {error ? <ModalError message={error} /> : null}
         </Modal>
       ) : null}
@@ -346,7 +373,7 @@ export default function VendorUsersView({ vendorId }: VendorUsersViewProps) {
           <UserFormFields
             form={form}
             onChange={updateField}
-            passwordRequired
+            mode="create"
           />
           {error ? <ModalError message={error} /> : null}
         </Modal>
@@ -521,16 +548,14 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function UserFormFields({
   form,
   onChange,
-  passwordHint,
-  passwordRequired = true,
+  mode,
 }: {
   form: VendorUserFormData;
   onChange: <K extends keyof VendorUserFormData>(
     key: K,
     value: VendorUserFormData[K],
   ) => void;
-  passwordHint?: string;
-  passwordRequired?: boolean;
+  mode: "create" | "edit";
 }) {
   return (
     <div className="space-y-4">
@@ -558,15 +583,37 @@ function UserFormFields({
           className={inputClass}
         />
       </Field>
-      <Field label="Password" hint={passwordHint}>
+      <Field
+        label="Password"
+        hint={
+          mode === "edit" ? "Leave blank to keep current password" : undefined
+        }
+      >
         <input
           type="password"
-          value={form.password}
+          name="password"
+          id="vendor-user-password"
+          autoComplete={mode === "create" ? "new-password" : "current-password"}
+          value={form.password ?? ""}
           onChange={(event) => onChange("password", event.target.value)}
-          required={passwordRequired}
+          required={mode === "create"}
+          placeholder={mode === "edit" ? "••••••••" : "Enter password"}
           className={inputClass}
         />
       </Field>
+      {mode === "edit" ? (
+        <label className="inline-flex h-[42px] w-fit cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50/80 px-3">
+          <input
+            type="checkbox"
+            checked={form.isBlocked}
+            onChange={(event) => onChange("isBlocked", event.target.checked)}
+            className="h-5 w-5 shrink-0 rounded border-slate-300 accent-brand"
+          />
+          <span className="text-sm font-semibold text-slate-900">
+            Blocked
+          </span>
+        </label>
+      ) : null}
     </div>
   );
 }

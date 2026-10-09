@@ -10,6 +10,7 @@ import type {
 import {
   createOffering,
   getOfferingDetails,
+  updateOffering,
   type CreateOfferingAddOnGroup,
   type CreateOfferingImagePayload,
   type CreateOfferingNamedItem,
@@ -17,12 +18,17 @@ import {
   type CreateOfferingRequiredOption,
   type OfferingDetailApiItem,
   type OfferingDetailNamedItem,
+  type UpdateOfferingExistingImage,
+  type UpdateOfferingImageUpload,
+  type UpdateOfferingPayload,
 } from "@/services/offerings";
 
 export const OFFERING_TYPE_OPTIONS = [
   { value: "catering", label: "Catering" },
-  { value: "cart", label: "Cart" },
-  { value: "live-station", label: "Live Station" },
+  { value: "delivery", label: "Delivery" },
+  { value: "setups", label: "Setups" },
+  { value: "hospitality", label: "Hospitality" },
+  { value: "feasts", label: "Feasts" },
 ] as const;
 
 const offeringFormsByKey: Record<string, OfferingFormData> = {};
@@ -44,6 +50,11 @@ export function createEmptyOfferingForm(vendorId: string): OfferingFormData {
     englishShortDescription: "",
     arabicShortDescription: "",
     gallery: [],
+    initialExistingImageKeys: [],
+    deletedImageKeys: [],
+    order: 1,
+    approveStatus: "approved",
+    collectionIds: [],
     offeringType: "catering",
     categoryId: "",
     published: false,
@@ -72,185 +83,6 @@ export function createEmptyOfferingForm(vendorId: string): OfferingFormData {
   };
 }
 
-function createBreakfastPackageForm(
-  vendorId: string,
-  offeringId: string | null,
-  approvalId?: string,
-): OfferingFormData {
-  return {
-    ...createEmptyOfferingForm(vendorId),
-    offeringId,
-    approvalId,
-    englishName: "Breakfast Package for 20 people",
-    arabicName: "المجموعة الافطار لـ ٢٠ شخص",
-    englishShortDescription: "Buffet,Occasions Catering",
-    arabicShortDescription: "بوفيه، تقديم الطعام للمناسبات",
-    gallery: [
-      {
-        id: "img-1",
-        url: "https://images.unsplash.com/photo-1519167758481-83f29da8c2f3?w=320&h=240&fit=crop",
-        alt: "Banquet table setup",
-      },
-      {
-        id: "img-2",
-        url: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=320&h=240&fit=crop",
-        alt: "Gold charger place setting",
-      },
-    ],
-    categoryId: "lunch-dinner-buffet",
-    femaleService: true,
-    minimumQty: "20",
-    maxQty: "150",
-    itemPriceQr: "120",
-    startingPriceQr: "2400",
-    maxTimeHours: "5",
-    setupTimeHours: "1",
-    serviceAvailabilityCode: "333",
-    englishCapacityNote: "20 Persons with option to add count",
-    arabicCapacityNote: "٢٠ شخص مع إمكانية زيادة العدد",
-    requirements: [
-      {
-        id: "req-1",
-        english: "Electric outlet",
-        arabic: "توصيلات كهربائية",
-      },
-    ],
-    includedFood: [
-      {
-        id: "food-1",
-        english:
-          "Bakeries ( Mix Croissant, Mix Bread, Mix Muffin, Mix Danish )",
-        arabic: "مخبوزات ( كرواسون مشكل، خبز مشكل، مافن مشكل، دانش مشكل )",
-      },
-      {
-        id: "food-2",
-        english:
-          "Cold Appetizers ( Hummos, Green Salad, Olive, Mix Cheese, Labna, ... )",
-        arabic:
-          "مقبلات باردة ( حمص، سلطة خضراء، زيتون، أجبان مشكلة، لبنة، ... )",
-      },
-      {
-        id: "food-3",
-        english: "Hot Appetizers ( Mini Sandwich, Mini Fatyer )",
-        arabic: "مقبلات ساخنة ( ساندويتش صغير، فطائر صغيرة )",
-      },
-      {
-        id: "food-4",
-        english: "4 Choices of the Main course",
-        arabic: "٤ خيارات من الطبق الرئيسي",
-      },
-    ],
-    drinks: [
-      {
-        id: "drink-1",
-        english: "Drinks : Water",
-        arabic: "المشروبات :مياه معدنيه",
-      },
-      {
-        id: "drink-2",
-        english: "2 Choices of Juices",
-        arabic: "اختيار نوعين من العصائر",
-      },
-      {
-        id: "drink-3",
-        english:
-          "Tea & Coffee : Coffee Machine, Turkish Coffee, Karak, Tea, Qatari Coffee",
-        arabic:
-          "(شاي و قهوة (ماكينة القهوة، قهوة تركية، كرك، شاي، قهوة قطرية",
-      },
-    ],
-  };
-}
-
-function createSeafoodForm(
-  vendorId: string,
-  offeringId: string | null,
-  approvalId?: string,
-): OfferingFormData {
-  return {
-    ...createBreakfastPackageForm(vendorId, offeringId, approvalId),
-    englishName: "Weekend Seafood Platter",
-    arabicName: "طبق مأكولات بحرية لعطلة نهاية الأسبوع",
-    englishShortDescription: "Fresh seafood selection for weekends",
-    arabicShortDescription: "تشكيلة مأكولات بحرية طازجة لعطلة نهاية الأسبوع",
-    categoryId: "65b24c449ba0330f75fc9651",
-    minimumQty: "10",
-    maxQty: "80",
-    itemPriceQr: "85",
-    startingPriceQr: "850",
-    englishCapacityNote: "Per platter serving",
-    arabicCapacityNote: "لكل طبق تقديم",
-    gallery: [
-      {
-        id: "img-sea-1",
-        url: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=320&h=240&fit=crop",
-        alt: "Seafood platter",
-      },
-    ],
-    includedFood: [
-      {
-        id: "food-sea-1",
-        english: "Grilled fish, prawns, and calamari",
-        arabic: "سمك مشوي، جمبري، وكاليماري",
-      },
-    ],
-    drinks: [],
-    requirements: [],
-  };
-}
-
-function createDeleteTestForm(
-  vendorId: string,
-  offeringId: string | null,
-  approvalId?: string,
-): OfferingFormData {
-  return {
-    ...createBreakfastPackageForm(vendorId, offeringId, approvalId),
-    englishName: "[Copy] Testing for delete",
-    arabicName: "اختبار للحذف",
-    englishShortDescription: "Test offering pending deletion approval",
-    arabicShortDescription: "عرض تجريبي بانتظار الموافقة على الحذف",
-    categoryId: "burger-station",
-    published: true,
-    gallery: [
-      {
-        id: "img-del-1",
-        url: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=320&h=240&fit=crop",
-        alt: "Burger station offering",
-      },
-    ],
-  };
-}
-
-function createTestPaymentForm(
-  vendorId: string,
-  offeringId: string,
-): OfferingFormData {
-  return {
-    ...createEmptyOfferingForm(vendorId),
-    offeringId,
-    englishName: "Test Payment",
-    arabicName: "Test payment",
-    englishShortDescription: "Test Payment",
-    arabicShortDescription: "Test payment",
-    categoryId: "65b23fed9ba0330f75fc9644",
-    published: true,
-    gallery: [
-      {
-        id: "img-tp-1",
-        url: "https://images.unsplash.com/photo-1555244162-803834f70033?w=320&h=240&fit=crop",
-        alt: "Test Payment offering",
-      },
-    ],
-  };
-}
-
-offeringFormsByKey["vnd-9:oa-2"] = createSeafoodForm("vnd-9", null, "oa-2");
-offeringFormsByKey["vnd-6:oa-1"] = createDeleteTestForm("vnd-6", null, "oa-1");
-offeringFormsByKey["vnd-1:off-tp-1"] = createTestPaymentForm(
-  "vnd-1",
-  "off-tp-1",
-);
 
 function delay(ms = 220) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -274,7 +106,7 @@ export function createEmptyOptionSection(kind: "required" | "addon" = "required"
   };
 }
 
-function cleanText(value?: string) {
+function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() ?? "";
 }
 
@@ -313,24 +145,87 @@ function mapNamedLines(items: OfferingDetailNamedItem[] | null | undefined) {
   });
 }
 
+function extractImageKey(image: {
+  key?: string;
+  url?: string;
+  cdnUrl?: string;
+}): string {
+  if (image.key && image.key.trim()) return image.key.trim();
+  const target = image.url || image.cdnUrl || "";
+  const match = target.match(/(?:carts\/|offerings\/)(offerings\/.+)$/);
+  if (match) return match[1];
+  const simpleMatch = target.match(/(offerings\/[^?#]+)/);
+  if (simpleMatch) return simpleMatch[1];
+  return "";
+}
+
+function mapCollectionIds(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (
+        item &&
+        typeof item === "object" &&
+        "_id" in item &&
+        typeof item._id === "string"
+      ) {
+        return item._id.trim();
+      }
+      if (
+        item &&
+        typeof item === "object" &&
+        "id" in item &&
+        typeof item.id === "string"
+      ) {
+        return item.id.trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
 function mapOfferingDetails(
   detail: OfferingDetailApiItem,
   input: { vendorId?: string; approvalId?: string },
 ): OfferingFormData {
   const base = createEmptyOfferingForm(vendorIdFromDetail(detail, input.vendorId));
   const images = (detail.images ?? []).flatMap((image) => {
-    const url = image.cdnUrl?.trim() || image.url?.trim() || "";
-    if (!url) return [];
-    const filename = cleanText(image.filename) || "image";
+    const rawUrl = image.url?.trim() || "";
+    const rawCdnUrl = image.cdnUrl?.trim() || "";
+    const previewUrl = rawCdnUrl || rawUrl;
+    if (!previewUrl) return [];
+    const filename = cleanText(image.filename) || "image.jpg";
+    const alt =
+      cleanText(image.alt) || filename.replace(/\.[^.]+$/, "") || filename;
+    const key = extractImageKey(image);
     return [
       {
         id: recordId(image._id),
-        url,
-        alt: filename.replace(/\.[^.]+$/, "") || filename,
+        url: previewUrl,
+        originalUrl: rawUrl || previewUrl,
+        cdnUrl: rawCdnUrl || previewUrl,
+        key,
+        filename,
+        alt,
         name: filename,
+        isExisting: true,
       },
     ];
   });
+
+  const initialExistingImageKeys = images
+    .map((image) => image.key)
+    .filter(Boolean) as string[];
+
+  const rawOrder = detail.order;
+  const order =
+    typeof rawOrder === "number" && Number.isFinite(rawOrder)
+      ? rawOrder
+      : Number(rawOrder) || 1;
+
+  const approveStatus = cleanText(detail.approveStatus) || "approved";
+  const collectionIds = mapCollectionIds(detail.collectionIds);
 
   return {
     ...base,
@@ -342,6 +237,11 @@ function mapOfferingDetails(
     englishShortDescription: cleanText(detail.shortDescription?.en),
     arabicShortDescription: cleanText(detail.shortDescription?.ar),
     gallery: images,
+    initialExistingImageKeys,
+    deletedImageKeys: [],
+    order,
+    approveStatus,
+    collectionIds,
     offeringType: cleanText(detail.serviceCategory) || base.offeringType,
     categoryId: categoryIdFromDetail(detail),
     published: Boolean(detail.published),
@@ -485,23 +385,63 @@ function toAddOnGroups(
     );
 }
 
+function getBase64ByteLength(dataUrl: string): number {
+  const parts = dataUrl.split(",");
+  if (parts.length < 2) return 0;
+  const base64 = parts[1];
+  let padding = 0;
+  if (base64.endsWith("==")) {
+    padding = 2;
+  } else if (base64.endsWith("=")) {
+    padding = 1;
+  }
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
 function toOfferingImages(
   gallery: OfferingGalleryImage[],
-): CreateOfferingImagePayload[] {
+): UpdateOfferingImageUpload[] {
   return gallery.flatMap((image) => {
     if (!image.url.startsWith("data:image/")) return [];
 
     const mime =
       image.type ||
       image.url.slice(5, image.url.indexOf(";")) ||
-      "image/png";
-    const ext = mime.includes("jpeg") ? "jpg" : mime.split("/")[1] || "png";
+      "image/jpeg";
+    const ext = mime.includes("jpeg") ? "jpg" : mime.split("/")[1] || "jpeg";
+    const name = image.name || `${image.alt || "image"}.${ext}`;
+    const size =
+      typeof image.size === "number" && image.size > 0
+        ? image.size
+        : getBase64ByteLength(image.url);
 
     return [
       {
-        name: image.name || `${image.alt || "image"}.${ext}`,
+        name,
         type: mime,
+        size,
         value: image.url,
+      },
+    ];
+  });
+}
+
+function toExistingImagesPayload(
+  gallery: OfferingGalleryImage[],
+): UpdateOfferingExistingImage[] {
+  return gallery.flatMap((image) => {
+    if (image.url.startsWith("data:image/")) return [];
+
+    const filename = image.filename || image.name || "image.jpg";
+    const alt = image.alt || filename.replace(/\.[^.]+$/, "") || "image";
+
+    return [
+      {
+        url: image.originalUrl || image.url,
+        cdnUrl: image.cdnUrl || image.url,
+        key: image.key || "",
+        filename,
+        alt,
       },
     ];
   });
@@ -556,6 +496,79 @@ async function toCreateOfferingPayload(
   };
 }
 
+export function toUpdateOfferingPayload(
+  data: OfferingFormData,
+): UpdateOfferingPayload {
+  const price = Number(data.itemPriceQr);
+  const startingPrice = Number(data.startingPriceQr);
+  const minimumQuantity = Number(data.minimumQty);
+  const maxQuantity = Number(data.maxQty);
+  const minimumNotice = Number(data.minimumNotice);
+  const setupTimeInHours = Number(data.setupTimeHours);
+  const maxTimeInHours = Number(data.maxTimeHours);
+  const order =
+    typeof data.order === "number" && Number.isFinite(data.order)
+      ? data.order
+      : Number(data.order) || 1;
+
+  const remainingKeys = new Set(
+    data.gallery
+      .filter((image) => !image.url.startsWith("data:image/"))
+      .map((image) => image.key?.trim())
+      .filter(Boolean) as string[],
+  );
+
+  const initialKeys = data.initialExistingImageKeys ?? [];
+  const autoDetectedDeletedKeys = initialKeys.filter(
+    (key) => key && !remainingKeys.has(key),
+  );
+
+  const deletedImageKeys = Array.from(
+    new Set([
+      ...(data.deletedImageKeys ?? []),
+      ...autoDetectedDeletedKeys,
+    ]),
+  ).filter(Boolean);
+
+  return {
+    name: {
+      en: data.englishName.trim(),
+      ar: data.arabicName.trim(),
+    },
+    shortDescription: {
+      en: data.englishShortDescription.trim(),
+      ar: data.arabicShortDescription.trim(),
+    },
+    serviceCategory: data.offeringType.trim(),
+    categoryId: data.categoryId.trim(),
+    vendorId: data.vendorId.trim(),
+    price: Number.isFinite(price) ? price : 0,
+    minimumQuantity: Number.isFinite(minimumQuantity) ? minimumQuantity : 0,
+    maxQuantity: Number.isFinite(maxQuantity) ? maxQuantity : 0,
+    startingPrice: Number.isFinite(startingPrice) ? startingPrice : 0,
+    minimumNotice: Number.isFinite(minimumNotice) ? minimumNotice : 0,
+    setupTimeInHours: Number.isFinite(setupTimeInHours) ? setupTimeInHours : 0,
+    maxTimeInHours: Number.isFinite(maxTimeInHours) ? maxTimeInHours : 0,
+    published: Boolean(data.published),
+    femaleServiceAvailable: Boolean(data.femaleService),
+    order,
+    approveStatus: data.approveStatus?.trim() || "approved",
+    enoughFor: {
+      en: data.englishCapacityNote.trim(),
+      ar: data.arabicCapacityNote.trim(),
+    },
+    requiredOptions: toRequiredOptions(data.requiredOptions),
+    addOns: toAddOnGroups(data.addOns),
+    food: toNamedLines(data.includedFood),
+    requirements: toNamedLines(data.requirements),
+    notes: toNamedLines(data.notes),
+    collectionIds: Array.isArray(data.collectionIds) ? data.collectionIds : [],
+    images: toExistingImagesPayload(data.gallery),
+    deletedImageKeys,
+    offeringimages: toOfferingImages(data.gallery),
+  };
+}
+
 export async function saveVendorOfferingForm(data: OfferingFormData) {
   if (!data.offeringId) {
     const created = await createOffering(await toCreateOfferingPayload(data));
@@ -566,7 +579,8 @@ export async function saveVendorOfferingForm(data: OfferingFormData) {
     return saved;
   }
 
-  await delay(280);
+  const payload = toUpdateOfferingPayload(data);
+  await updateOffering(data.offeringId, payload);
   const saved = upsertVendorOfferingFromForm(data);
   const key = formStorageKey(data.vendorId, saved.id);
   offeringFormsByKey[key] = structuredClone({ ...data, offeringId: saved.id });
@@ -575,18 +589,26 @@ export async function saveVendorOfferingForm(data: OfferingFormData) {
 
 /** Swap for a real API call when available. */
 export async function saveAndApproveOfferingForm(data: OfferingFormData) {
-  await delay(280);
-  if (!data.approvalId) {
+  const targetId = data.offeringId || data.approvalId;
+  if (!targetId) {
     throw new Error("Approval id is required.");
   }
 
-  const key = `${data.vendorId}:${data.approvalId}`;
+  if (data.offeringId) {
+    const payload = toUpdateOfferingPayload(data);
+    await updateOffering(data.offeringId, payload);
+  }
+
+  if (data.approvalId) {
+    await approveOfferingApproval(data.approvalId);
+  }
+
+  const key = `${data.vendorId}:${targetId}`;
   offeringFormsByKey[key] = structuredClone(data);
   if (data.offeringId) {
     offeringFormsByKey[formStorageKey(data.vendorId, data.offeringId)] =
       structuredClone(data);
     upsertVendorOfferingFromForm({ ...data, offeringId: data.offeringId });
   }
-  await approveOfferingApproval(data.approvalId);
   return true;
 }

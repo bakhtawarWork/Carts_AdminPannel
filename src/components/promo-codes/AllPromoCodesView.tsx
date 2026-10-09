@@ -5,12 +5,14 @@ import Link from "next/link";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { usePromoCodes } from "@/hooks/usePromoCodes";
 import {
+  deletePromoCodeById,
   formatActiveLabel,
   formatAuditStamp,
   formatPercent,
   formatPromoDateTime,
   formatRelativeTime,
   formatUsageLine,
+  getPromoCodeDeleteErrorMessage,
 } from "@/lib/promo-codes";
 import type { PromoCodeListTab, PromoCodeRecord } from "@/lib/types";
 
@@ -19,8 +21,13 @@ const PAGE_SIZE = 6;
 export default function AllPromoCodesView() {
   const [tab, setTab] = useState<PromoCodeListTab>("admin");
   const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<PromoCodeRecord | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const { items, total, loading, error } = usePromoCodes({
+  const { items, total, loading, error, refresh } = usePromoCodes({
     tab,
     page,
     pageSize: PAGE_SIZE,
@@ -29,6 +36,27 @@ export default function AllPromoCodesView() {
   function switchTab(next: PromoCodeListTab) {
     setTab(next);
     setPage(1);
+    setActionError(null);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    setDeleting(true);
+    setActionError(null);
+    try {
+      await deletePromoCodeById(deleteTarget.id);
+      const nextTotal = Math.max(0, total - 1);
+      const maxPage = Math.max(1, Math.ceil(nextTotal / PAGE_SIZE) || 1);
+      if (page > maxPage) setPage(maxPage);
+      setDeleteTarget(null);
+      refresh();
+    } catch (caught) {
+      setActionError(getPromoCodeDeleteErrorMessage(caught));
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -63,6 +91,12 @@ export default function AllPromoCodesView() {
         </TabButton>
       </div>
 
+      {actionError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {actionError}
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-16 text-center text-sm text-slate-500 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
           Loading promo codes…
@@ -82,6 +116,11 @@ export default function AllPromoCodesView() {
               key={promo.id}
               promo={promo}
               showEdit={tab === "vendor"}
+              deleting={deleting && deleteTarget?.id === promo.id}
+              onDelete={() => {
+                setActionError(null);
+                setDeleteTarget(promo);
+              }}
             />
           ))}
         </div>
@@ -97,6 +136,17 @@ export default function AllPromoCodesView() {
           />
         </div>
       ) : null}
+
+      {deleteTarget ? (
+        <ConfirmDeleteDialog
+          code={deleteTarget.code}
+          busy={deleting}
+          onCancel={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+          onConfirm={() => void confirmDelete()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -104,9 +154,13 @@ export default function AllPromoCodesView() {
 function PromoTicketCard({
   promo,
   showEdit,
+  deleting,
+  onDelete,
 }: {
   promo: PromoCodeRecord;
   showEdit: boolean;
+  deleting: boolean;
+  onDelete: () => void;
 }) {
   const usagePercent =
     promo.usageLimit === null
@@ -153,7 +207,11 @@ function PromoTicketCard({
                   Edit
                 </Link>
               ) : null}
-              <DeleteButton code={promo.code} />
+              <DeleteButton
+                code={promo.code}
+                deleting={deleting}
+                onDelete={onDelete}
+              />
             </div>
           </div>
 
@@ -168,7 +226,11 @@ function PromoTicketCard({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div
+            className={`mt-4 grid gap-3 ${
+              promo.createdBy === "vendor" ? "sm:grid-cols-2" : ""
+            }`}
+          >
             <MetaBlock label="Usage">
               <p className="font-semibold tabular-nums text-slate-900">
                 {formatUsageLine(promo.usageCount, promo.usageLimit)}
@@ -181,12 +243,18 @@ function PromoTicketCard({
               </div>
             </MetaBlock>
 
-            <MetaBlock label="Vendor">
-              <p className="font-medium text-slate-900">{promo.vendorEnglish}</p>
-              <p className="mt-0.5 text-sm text-slate-600" dir="auto">
-                {promo.vendorArabic}
-              </p>
-            </MetaBlock>
+            {promo.createdBy === "vendor" ? (
+              <MetaBlock label="Vendor">
+                <p className="font-medium text-slate-900">
+                  {promo.vendorEnglish || "—"}
+                </p>
+                {promo.vendorArabic ? (
+                  <p className="mt-0.5 text-sm text-slate-600" dir="auto">
+                    {promo.vendorArabic}
+                  </p>
+                ) : null}
+              </MetaBlock>
+            ) : null}
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-100 p-3.5">
@@ -194,14 +262,29 @@ function PromoTicketCard({
               Discount share
             </p>
             <div className="mt-2 grid grid-cols-3 gap-2">
-              <ShareChip label="Amount" value={formatPercent(promo.amountPercent)} />
+              <ShareChip
+                label="Amount"
+                value={
+                  promo.promoCodeType === "fixed"
+                    ? `${promo.amountQr ?? promo.amountPercent} QR`
+                    : formatPercent(promo.amountPercent)
+                }
+              />
               <ShareChip
                 label="Carts Share"
-                value={formatPercent(promo.cartsSharePercent)}
+                value={
+                  promo.promoCodeType === "fixed"
+                    ? `${promo.cartsSharePercent} QR`
+                    : formatPercent(promo.cartsSharePercent)
+                }
               />
               <ShareChip
                 label="Vendors Share"
-                value={formatPercent(promo.vendorsSharePercent)}
+                value={
+                  promo.promoCodeType === "fixed"
+                    ? `${promo.vendorsSharePercent} QR`
+                    : formatPercent(promo.vendorsSharePercent)
+                }
               />
             </div>
           </div>
@@ -270,22 +353,89 @@ function ActiveBadge({ isActive }: { isActive: boolean }) {
   );
 }
 
-function DeleteButton({ code }: { code: string }) {
+function DeleteButton({
+  code,
+  deleting,
+  onDelete,
+}: {
+  code: string;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
   return (
     <button
       type="button"
+      onClick={onDelete}
+      disabled={deleting}
       aria-label={`Delete promo code ${code}`}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path
-          d="M8.2 8.2 15.8 15.8M15.8 8.2 8.2 15.8"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-        />
-      </svg>
+      {deleting ? (
+        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-300 border-t-red-600" />
+      ) : (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M8.2 8.2 15.8 15.8M15.8 8.2 8.2 15.8"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
     </button>
+  );
+}
+
+function ConfirmDeleteDialog({
+  code,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  code: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close dialog"
+        onClick={onCancel}
+        disabled={busy}
+        className="absolute inset-0 bg-slate-950/40"
+      />
+      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h3 className="text-base font-semibold text-slate-900">
+            Delete promo code
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Are you sure you want to delete &quot;{code}&quot;? This cannot be
+            undone.
+          </p>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

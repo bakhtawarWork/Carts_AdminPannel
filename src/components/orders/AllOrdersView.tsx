@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { useOrders } from "@/hooks/useOrders";
+import { useVendorFilterOptions } from "@/hooks/useVendorFilterOptions";
 import {
   CANCELLATION_STATUS_OPTIONS,
   ORDER_STATUS_OPTIONS,
@@ -14,11 +15,10 @@ import {
   formatPaymentLine,
   formatRelativeTime,
   formatStatusLabel,
-  getOrderVendorOptions,
 } from "@/lib/orders";
 import type { OrderListTab, OrderRecord } from "@/lib/types";
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 20;
 
 const EMPTY_FILTERS = {
   orderId: "",
@@ -29,6 +29,9 @@ const EMPTY_FILTERS = {
   updatedInLast4Days: "any" as const,
 };
 
+const inputClassName =
+  "w-full min-w-0 rounded border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
+
 export default function AllOrdersView() {
   const [tab, setTab] = useState<OrderListTab>("active");
   const [orderId, setOrderId] = useState("");
@@ -36,16 +39,14 @@ export default function AllOrdersView() {
   const [vendorId, setVendorId] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [cancellationStatus, setCancellationStatus] =
-    useState<"any" | "cancelled" | "not_cancelled">("any");
+    useState<typeof EMPTY_FILTERS.cancellationStatus>("any");
   const [orderStatus, setOrderStatus] = useState("");
   const [updatedInLast4Days, setUpdatedInLast4Days] =
-    useState<"any" | "yes" | "no">("any");
+    useState<typeof EMPTY_FILTERS.updatedInLast4Days>("any");
   const [page, setPage] = useState(1);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [filtersOpen, setFiltersOpen] = useState(true);
   const [exporting, setExporting] = useState(false);
-
-  const vendorOptions = useMemo(() => getOrderVendorOptions(), []);
+  const { options: vendorOptions, loading: vendorsLoading } =
+    useVendorFilterOptions();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -65,7 +66,6 @@ export default function AllOrdersView() {
     updatedInLast4Days,
     page,
     pageSize: PAGE_SIZE,
-    sortDir,
   });
 
   function resetFilters() {
@@ -84,11 +84,6 @@ export default function AllOrdersView() {
     resetFilters();
   }
 
-  function toggleSort() {
-    setSortDir((current) => (current === "desc" ? "asc" : "desc"));
-    setPage(1);
-  }
-
   async function handleExport() {
     setExporting(true);
     try {
@@ -100,22 +95,15 @@ export default function AllOrdersView() {
         cancellationStatus,
         orderStatus: orderStatus || undefined,
         updatedInLast4Days,
-        sortDir,
       });
-      downloadOrdersCsv(rows, `orders-${tab}-${new Date().toISOString().slice(0, 10)}.csv`);
+      downloadOrdersCsv(
+        rows,
+        `orders-${tab}-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
     } finally {
       setExporting(false);
     }
   }
-
-  const activeFilterCount = [
-    debouncedOrderId,
-    vendorId,
-    eventDate,
-    cancellationStatus !== "any" ? cancellationStatus : "",
-    orderStatus,
-    updatedInLast4Days !== "any" ? updatedInLast4Days : "",
-  ].filter(Boolean).length;
 
   return (
     <div className="space-y-5">
@@ -157,148 +145,131 @@ export default function AllOrdersView() {
         </button>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-        <button
-          type="button"
-          onClick={() => setFiltersOpen((open) => !open)}
-          className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left sm:px-5"
-        >
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Refine results</p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {activeFilterCount === 0
-                ? "No filters applied"
-                : `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} active`}
-            </p>
+      <section className="rounded-2xl border border-slate-200/80 bg-slate-50/90 px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:px-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end">
+          <FilterField label="Order Id" className="xl:w-[120px]">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={orderId}
+              onChange={(event) => setOrderId(event.target.value)}
+              className={inputClassName}
+            />
+          </FilterField>
+
+          <FilterField label="Vendor" className="xl:min-w-[140px] xl:flex-1">
+            <select
+              value={vendorId}
+              disabled={vendorsLoading}
+              onChange={(event) => {
+                setVendorId(event.target.value);
+                setPage(1);
+              }}
+              className={inputClassName}
+            >
+              <option value="">
+                {vendorsLoading ? "Loading vendors…" : "All vendors"}
+              </option>
+              {vendorOptions.map((vendor) => (
+                <option key={vendor.id} value={vendor.id}>
+                  {vendor.label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+
+          <FilterField label="Event Date" className="xl:w-[150px]">
+            <input
+              type="date"
+              value={eventDate}
+              onChange={(event) => {
+                setEventDate(event.target.value);
+                setPage(1);
+              }}
+              className={inputClassName}
+            />
+          </FilterField>
+
+          <FilterField label="Cancellation status" className="xl:w-[150px]">
+            <select
+              value={cancellationStatus}
+              onChange={(event) => {
+                setCancellationStatus(
+                  event.target.value as typeof cancellationStatus,
+                );
+                setPage(1);
+              }}
+              className={inputClassName}
+            >
+              {CANCELLATION_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+
+          <FilterField label="Order status" className="xl:w-[140px]">
+            <select
+              value={orderStatus}
+              onChange={(event) => {
+                setOrderStatus(event.target.value);
+                setPage(1);
+              }}
+              className={inputClassName}
+            >
+              {ORDER_STATUS_OPTIONS.map((option) => (
+                <option key={option.value || "any"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+
+          <FilterField label="Updated in last 4 days" className="xl:w-[170px]">
+            <select
+              value={updatedInLast4Days}
+              onChange={(event) => {
+                setUpdatedInLast4Days(
+                  event.target.value as typeof updatedInLast4Days,
+                );
+                setPage(1);
+              }}
+              className={inputClassName}
+            >
+              {UPDATED_LAST_4_DAYS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+
+          <div className="flex shrink-0 pb-0.5 xl:ml-auto">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              Reset
+            </button>
           </div>
-          <ChevronIcon open={filtersOpen} />
-        </button>
-
-        {filtersOpen ? (
-          <div className="border-t border-slate-100 px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label="Order Id">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={orderId}
-                  onChange={(event) => setOrderId(event.target.value)}
-                  placeholder="Search by order id"
-                  className={inputClassName}
-                />
-              </FilterField>
-
-              <FilterField label="Vendor">
-                <select
-                  value={vendorId}
-                  onChange={(event) => {
-                    setVendorId(event.target.value);
-                    setPage(1);
-                  }}
-                  className={inputClassName}
-                >
-                  <option value="">All vendors</option>
-                  {vendorOptions.map((vendor) => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {vendor.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-
-              <FilterField label="Event Date">
-                <input
-                  type="date"
-                  value={eventDate}
-                  onChange={(event) => {
-                    setEventDate(event.target.value);
-                    setPage(1);
-                  }}
-                  className={inputClassName}
-                />
-              </FilterField>
-
-              <FilterField label="Cancellation status">
-                <select
-                  value={cancellationStatus}
-                  onChange={(event) => {
-                    setCancellationStatus(
-                      event.target.value as typeof cancellationStatus,
-                    );
-                    setPage(1);
-                  }}
-                  className={inputClassName}
-                >
-                  {CANCELLATION_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-
-              <FilterField label="Order status">
-                <select
-                  value={orderStatus}
-                  onChange={(event) => {
-                    setOrderStatus(event.target.value);
-                    setPage(1);
-                  }}
-                  className={inputClassName}
-                >
-                  {ORDER_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value || "any"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-
-              <FilterField label="Updated in last 4 days">
-                <select
-                  value={updatedInLast4Days}
-                  onChange={(event) => {
-                    setUpdatedInLast4Days(
-                      event.target.value as typeof updatedInLast4Days,
-                    );
-                    setPage(1);
-                  }}
-                  className={inputClassName}
-                >
-                  {UPDATED_LAST_4_DAYS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-            </div>
-
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-        ) : null}
+        </div>
       </section>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-5">
+          <p className="text-sm font-semibold text-slate-900">
+            {loading
+              ? "Loading…"
+              : `${total.toLocaleString("en-US")} order${total === 1 ? "" : "s"}`}
+          </p>
+        </div>
+
         <div className="hidden border-b border-slate-100 bg-slate-50/80 px-5 py-3 lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto] lg:gap-4 lg:text-xs lg:font-semibold lg:uppercase lg:tracking-wide lg:text-slate-500">
           <span>Order Id</span>
           <span>Vendor</span>
-          <button
-            type="button"
-            onClick={toggleSort}
-            className="inline-flex items-center gap-1 text-left transition hover:text-slate-800"
-          >
-            Order Date
-            <SortIcon direction={sortDir} />
-          </button>
+          <span>Order Date</span>
           <span>Delivery Date</span>
           <span>Status</span>
           <span>P. Method (status)</span>
@@ -319,7 +290,7 @@ export default function AllOrdersView() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {items.map((order) => (
-              <OrderListItem key={order.id} order={order} onSort={toggleSort} sortDir={sortDir} />
+              <OrderListItem key={order.id} order={order} />
             ))}
           </ul>
         )}
@@ -335,15 +306,7 @@ export default function AllOrdersView() {
   );
 }
 
-function OrderListItem({
-  order,
-  onSort,
-  sortDir,
-}: {
-  order: OrderRecord;
-  onSort: () => void;
-  sortDir: "asc" | "desc";
-}) {
+function OrderListItem({ order }: { order: OrderRecord }) {
   return (
     <li className="group px-4 py-4 transition hover:bg-slate-50/70 sm:px-5">
       <div className="hidden lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto] lg:items-center lg:gap-4">
@@ -362,7 +325,10 @@ function OrderListItem({
           <div>
             <OrderIdCell orderNumber={order.orderNumber} />
             <div className="mt-2">
-              <VendorCell english={order.vendorEnglish} arabic={order.vendorArabic} />
+              <VendorCell
+                english={order.vendorEnglish}
+                arabic={order.vendorArabic}
+              />
             </div>
           </div>
           <ActionsCell orderId={order.id} />
@@ -378,15 +344,6 @@ function OrderListItem({
           <PaymentCell order={order} />
           <PriceCell price={order.totalPrice} currency={order.currency} />
         </div>
-
-        <button
-          type="button"
-          onClick={onSort}
-          className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 lg:hidden"
-        >
-          Sort by order date
-          <SortIcon direction={sortDir} />
-        </button>
       </article>
     </li>
   );
@@ -409,27 +366,35 @@ function VendorCell({
 }) {
   return (
     <div>
-      <p className="font-medium text-slate-900">{english}</p>
-      <p className="mt-0.5 text-sm text-slate-600" dir="auto">
-        {arabic}
-      </p>
+      <p className="font-medium text-slate-900">{english || "—"}</p>
+      {arabic ? (
+        <p className="mt-0.5 text-sm text-slate-600" dir="auto">
+          {arabic}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 function DateCell({ label, value }: { label: string; value: string }) {
+  const relative = formatRelativeTime(value);
+
   return (
     <div>
       <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
         {label}
       </p>
       <p className="text-sm text-slate-800">{formatOrderDateTime(value)}</p>
-      <p className="mt-0.5 text-xs text-amber-700">{formatRelativeTime(value)}</p>
+      {relative ? (
+        <p className="mt-0.5 text-xs text-amber-700">{relative}</p>
+      ) : null}
     </div>
   );
 }
 
 function StatusCell({ order }: { order: OrderRecord }) {
+  const relative = formatRelativeTime(order.statusUpdatedAt);
+
   return (
     <div>
       <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 lg:hidden">
@@ -438,9 +403,11 @@ function StatusCell({ order }: { order: OrderRecord }) {
       <p className="text-sm font-semibold capitalize text-slate-900">
         {formatStatusLabel(order.status)}
       </p>
-      <p className="mt-0.5 text-xs text-amber-700">
-        (last update: {formatRelativeTime(order.statusUpdatedAt).slice(1, -1)})
-      </p>
+      {relative ? (
+        <p className="mt-0.5 text-xs text-amber-700">
+          (last update: {relative.slice(1, -1)})
+        </p>
+      ) : null}
       {order.isLate ? (
         <span className="mt-1.5 inline-flex rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
           Late
@@ -496,6 +463,25 @@ function ActionsCell({ orderId }: { orderId: string }) {
   );
 }
 
+function FilterField({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`block min-w-0 text-sm ${className}`}>
+      <span className="mb-1 block text-xs font-medium text-slate-600">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
 function TabLink({
   active,
   onClick,
@@ -517,62 +503,6 @@ function TabLink({
     >
       {children}
     </button>
-  );
-}
-
-function FilterField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="mb-1.5 block font-medium text-slate-700">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-const inputClassName =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`h-5 w-5 text-slate-400 transition ${open ? "rotate-180" : ""}`}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-    >
-      <path
-        d="m6 9 6 6 6-6"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SortIcon({ direction }: { direction: "asc" | "desc" }) {
-  return (
-    <svg
-      className={`h-3.5 w-3.5 transition ${direction === "asc" ? "rotate-180" : ""}`}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-    >
-      <path
-        d="m7 10 5 5 5-5"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

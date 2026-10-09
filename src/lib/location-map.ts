@@ -105,85 +105,8 @@ function dummyId(prefix: string) {
   return `${prefix}_${nextId}`;
 }
 
-/**
- * Dummy locations around Qatar. Replaces GET /admin/locations geometry later.
- * Existing vendor delivery-area helpers in `src/lib/locations.ts` are unchanged.
- */
-const DUMMY_LOCATION_GROUPS: LocationMapGroup[] = [
-  {
-    id: "loc_al_khor",
-    nameEn: "Al Khor",
-    nameAr: "الخور",
-    subareas: [
-      {
-        id: "sub_madinat_al_kaaban",
-        locationId: "loc_al_khor",
-        nameEn: "Madinat Al Kaaban",
-        nameAr: "مدينة الكعبان",
-        path: [
-          { lat: 25.812, lng: 51.402 },
-          { lat: 25.818, lng: 51.438 },
-          { lat: 25.801, lng: 51.472 },
-          { lat: 25.778, lng: 51.461 },
-          { lat: 25.764, lng: 51.428 },
-          { lat: 25.772, lng: 51.398 },
-          { lat: 25.792, lng: 51.392 },
-        ],
-      },
-      {
-        id: "sub_al_thakhira",
-        locationId: "loc_al_khor",
-        nameEn: "Al Thakhira",
-        nameAr: "الذخيرة",
-        path: [
-          { lat: 25.758, lng: 51.528 },
-          { lat: 25.762, lng: 51.548 },
-          { lat: 25.754, lng: 51.568 },
-          { lat: 25.742, lng: 51.574 },
-          { lat: 25.728, lng: 51.562 },
-          { lat: 25.722, lng: 51.538 },
-          { lat: 25.732, lng: 51.522 },
-          { lat: 25.746, lng: 51.518 },
-        ],
-      },
-    ],
-  },
-  {
-    id: "loc_doha",
-    nameEn: "Doha",
-    nameAr: "الدوحة",
-    subareas: [
-      {
-        id: "sub_lusail",
-        locationId: "loc_doha",
-        nameEn: "Lusail",
-        nameAr: "لوسيل",
-        path: [
-          { lat: 25.448, lng: 51.478 },
-          { lat: 25.456, lng: 51.512 },
-          { lat: 25.438, lng: 51.528 },
-          { lat: 25.412, lng: 51.518 },
-          { lat: 25.408, lng: 51.486 },
-          { lat: 25.426, lng: 51.468 },
-        ],
-      },
-      {
-        id: "sub_west_bay",
-        locationId: "loc_doha",
-        nameEn: "West Bay",
-        nameAr: "الخليج الغربي",
-        path: [
-          { lat: 25.342, lng: 51.512 },
-          { lat: 25.348, lng: 51.538 },
-          { lat: 25.334, lng: 51.548 },
-          { lat: 25.316, lng: 51.542 },
-          { lat: 25.312, lng: 51.518 },
-          { lat: 25.324, lng: 51.508 },
-        ],
-      },
-    ],
-  },
-];
+/** Empty until location geometry is loaded from the API. */
+const DUMMY_LOCATION_GROUPS: LocationMapGroup[] = [];
 
 export async function fetchLocationMapGroups(): Promise<LocationMapGroup[]> {
   await new Promise((resolve) => window.setTimeout(resolve, 350));

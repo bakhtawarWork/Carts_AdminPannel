@@ -1,5 +1,6 @@
 import type { VendorRecord, VendorsQuery, VendorsResponse } from "@/lib/types";
 import {
+  deleteVendor,
   getDraftVendors,
   getVendors,
   type VendorListApiItem,
@@ -93,4 +94,115 @@ export async function fetchVendors(
 
 export function getVendorById(id: string) {
   return vendorCache.get(id) ?? null;
+}
+
+export async function removeVendor(id: string) {
+  const result = await deleteVendor(id);
+  vendorCache.delete(id);
+  invalidateVendorFilterOptionsCache();
+  return result;
+}
+
+export type VendorFilterOption = { id: string; label: string };
+
+/** API allows limit ≤ 50; page through until all vendors are loaded for dropdowns. */
+const VENDOR_OPTIONS_PAGE_SIZE = 50;
+
+function vendorOptionFromRecord(vendor: VendorRecord): VendorFilterOption {
+  return {
+    id: vendor.id,
+    label: vendor.arabicName
+      ? `${vendor.englishName} / ${vendor.arabicName}`
+      : vendor.englishName || vendor.id,
+  };
+}
+
+function appendVendorOptions(
+  options: VendorFilterOption[],
+  seen: Set<string>,
+  vendors: VendorListApiItem[],
+) {
+  const batch = vendors
+    .map((item) => mapVendor(item, false))
+    .filter((item): item is VendorRecord => item !== null);
+
+  rememberVendors(batch);
+
+  for (const vendor of batch) {
+    if (seen.has(vendor.id)) continue;
+    seen.add(vendor.id);
+    options.push(vendorOptionFromRecord(vendor));
+  }
+
+  return batch.length;
+}
+
+/** Network load of every vendor page for dropdowns (page 1, then remaining pages in parallel). */
+async function loadVendorFilterOptionsFromApi(): Promise<VendorFilterOption[]> {
+  const options: VendorFilterOption[] = [];
+  const seen = new Set<string>();
+
+  const first = await getVendors({
+    page: 1,
+    limit: VENDOR_OPTIONS_PAGE_SIZE,
+  });
+
+  const firstCount = appendVendorOptions(options, seen, first.vendors);
+  const total = first.total;
+  const pageCount = Math.max(1, Math.ceil(total / VENDOR_OPTIONS_PAGE_SIZE));
+
+  if (pageCount > 1 && firstCount > 0) {
+    const rest = await Promise.all(
+      Array.from({ length: pageCount - 1 }, (_, index) =>
+        getVendors({
+          page: index + 2,
+          limit: VENDOR_OPTIONS_PAGE_SIZE,
+        }),
+      ),
+    );
+
+    for (const payload of rest) {
+      appendVendorOptions(options, seen, payload.vendors);
+    }
+  }
+
+  return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+let vendorFilterOptionsCache: VendorFilterOption[] | null = null;
+let vendorFilterOptionsLoad: Promise<VendorFilterOption[]> | null = null;
+
+/**
+ * Vendor options for dropdowns — fetched once per session, shared across screens.
+ * Concurrent callers share the same in-flight promise.
+ */
+export function ensureVendorFilterOptionsLoaded(): Promise<VendorFilterOption[]> {
+  if (vendorFilterOptionsCache) {
+    return Promise.resolve(vendorFilterOptionsCache);
+  }
+
+  if (!vendorFilterOptionsLoad) {
+    vendorFilterOptionsLoad = loadVendorFilterOptionsFromApi()
+      .then((options) => {
+        vendorFilterOptionsCache = options;
+        return options;
+      })
+      .catch((error) => {
+        vendorFilterOptionsLoad = null;
+        throw error;
+      });
+  }
+
+  return vendorFilterOptionsLoad;
+}
+
+/** @deprecated Prefer ensureVendorFilterOptionsLoaded / useVendorFilterOptions — same cached result. */
+export function fetchVendorFilterOptions(): Promise<VendorFilterOption[]> {
+  return ensureVendorFilterOptionsLoaded();
+}
+
+/** Drop session cache (e.g. after creating a vendor) so the next dropdown load refetches. */
+export function invalidateVendorFilterOptionsCache() {
+  vendorFilterOptionsCache = null;
+  vendorFilterOptionsLoad = null;
 }

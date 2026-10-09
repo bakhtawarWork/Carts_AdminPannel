@@ -10,9 +10,17 @@ import {
   createVendor,
   createVendorDraft,
   getVendorDetails,
+  updateVendor,
   type CreateVendorImagePayload,
   type CreateVendorPayload,
   type CreateVendorServiceMap,
+  type UpdateVendorAreaCost,
+  type UpdateVendorContactInfo,
+  type UpdateVendorDeletedImage,
+  type UpdateVendorImageUpload,
+  type UpdateVendorPayload,
+  type UpdateVendorServiceImages,
+  type UpdateVendorServiceMap,
   type VendorDetailApiItem,
   type VendorDetailAreaApiItem,
   type VendorDetailImageApiItem,
@@ -47,12 +55,22 @@ export function createEmptyVendorForm(): VendorFormData {
     arabicTagline: "",
     arabicShortDescription: "",
     logo: null,
+    initialLogoKey: undefined,
+    deletedLogoKeys: [],
     email: "",
+    secondaryEmail: "",
+    accountingEmails: [],
     mobile: "",
     phone: "",
     published: false,
     doublePoints: false,
     percentage: "100",
+    order: 0,
+    isFullyBooked: false,
+    minimumOrderAmountCatering: "0",
+    minimumOrderAmountDelivery: "0",
+    minimumOrderTimeInHours: "0",
+    collectionIds: [],
     servicesOffered: [],
     services: {
       catering: emptyServiceFields(),
@@ -61,6 +79,8 @@ export function createEmptyVendorForm(): VendorFormData {
       hospitality: emptyServiceFields(),
       feasts: emptyServiceFields(),
     },
+    initialServiceImageKeys: {},
+    deletedServiceImageKeys: {},
   };
 }
 
@@ -72,7 +92,7 @@ const SERVICE_IDS = new Set<VendorServiceId>(
   VENDOR_SERVICES.map((service) => service.id),
 );
 
-function cleanText(value?: string) {
+function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() ?? "";
 }
 
@@ -84,11 +104,56 @@ function numberText(value: number | string | null | undefined) {
 
 function imageSource(item: VendorDetailImageApiItem | string) {
   if (typeof item === "string") return item.trim();
-  const candidates = [item.url, item.src, item.path, item.value, item.image];
+  const candidates = [
+    item.url,
+    item.src,
+    item.path,
+    item.value,
+    item.image,
+    item.cdnUrl,
+  ];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";
+}
+
+function extractVendorImageKey(item: VendorDetailImageApiItem | string): string {
+  if (typeof item === "string") {
+    const match = item.match(/(vendors\/[^?#]+)/);
+    return match ? match[1] : "";
+  }
+  if (item.key && item.key.trim()) return item.key.trim();
+  const target =
+    item.url || item.src || item.path || item.value || item.image || item.cdnUrl || "";
+  const match = target.match(/(vendors\/[^?#]+)/);
+  return match ? match[1] : "";
+}
+
+function mapCollectionIds(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (
+        item &&
+        typeof item === "object" &&
+        "_id" in item &&
+        typeof item._id === "string"
+      ) {
+        return item._id.trim();
+      }
+      if (
+        item &&
+        typeof item === "object" &&
+        "id" in item &&
+        typeof item.id === "string"
+      ) {
+        return item.id.trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
 }
 
 function mapImage(
@@ -100,6 +165,7 @@ function mapImage(
 
   const record = typeof item === "string" ? null : item;
   const title = cleanText(record?.name || record?.title) || fallbackTitle;
+  const key = extractVendorImageKey(item);
   return {
     id:
       record?._id ||
@@ -108,6 +174,8 @@ function mapImage(
     url,
     title,
     alt: cleanText(record?.alt) || title,
+    key: key || undefined,
+    isExisting: true,
   };
 }
 
@@ -153,16 +221,43 @@ function mapVendorDetails(
     mapImages(detail.logoImg, englishName || "Vendor logo")[0] ??
     null;
 
+  const initialLogoKey = logo?.key;
+
+  const initialServiceImageKeys: Partial<Record<VendorServiceId, string[]>> = {};
   const services = { ...base.services };
   for (const service of VENDOR_SERVICES) {
     const id = service.id;
+    const rawVendorImages = detail.vendorImages ?? detail.vendorimages;
+    const mappedImages = mapImages(rawVendorImages?.[id], service.label);
+    initialServiceImageKeys[id] = mappedImages
+      .map((img) => img.key)
+      .filter(Boolean) as string[];
     services[id] = {
-      images: mapImages(detail.vendorImages?.[id], service.label),
+      images: mappedImages,
       minNotice: numberText(detail.minimumNotice?.[id]),
       capacity: numberText(detail.capacity?.[id]),
       deliveryAreas: mapDeliveryAreas(detail.deliveryAreasAndCost?.[id]),
     };
   }
+
+  const secondaryEmail = cleanText(detail.contactInfo?.secondaryEmail);
+  const accountingEmails = Array.isArray(detail.contactInfo?.accountingEmails)
+    ? detail.contactInfo.accountingEmails.map(cleanText).filter(Boolean)
+    : [];
+  const rawOrder = detail.order;
+  const order =
+    typeof rawOrder === "number" && Number.isFinite(rawOrder)
+      ? rawOrder
+      : Number(rawOrder) || 0;
+  const isFullyBooked = Boolean(detail.isFullyBooked);
+  const minimumOrderAmountCatering = numberText(
+    detail.minimumOrderAmountCatering,
+  );
+  const minimumOrderAmountDelivery = numberText(
+    detail.minimumOrderAmountDelivery,
+  );
+  const minimumOrderTimeInHours = numberText(detail.minimumOrderTimeInHours);
+  const collectionIds = mapCollectionIds(detail.collectionIds);
 
   return {
     ...base,
@@ -174,12 +269,24 @@ function mapVendorDetails(
     arabicTagline: cleanText(detail.tagline?.ar),
     arabicShortDescription: cleanText(detail.shortDescription?.ar),
     logo,
+    initialLogoKey,
+    deletedLogoKeys: [],
+    initialServiceImageKeys,
+    deletedServiceImageKeys: {},
     email: cleanText(detail.contactInfo?.primaryEmail),
+    secondaryEmail,
+    accountingEmails,
     mobile: cleanText(detail.contactInfo?.mobile),
     phone: cleanText(detail.contactInfo?.phone),
     published: Boolean(detail.published),
     doublePoints: Boolean(detail.doublePointReward),
     percentage: numberText(detail.percentage),
+    order,
+    isFullyBooked,
+    minimumOrderAmountCatering,
+    minimumOrderAmountDelivery,
+    minimumOrderTimeInHours,
+    collectionIds,
     servicesOffered,
     services,
   };
@@ -342,20 +449,234 @@ async function toCreateVendorPayload(
   };
 }
 
+function getBase64ByteLength(dataUrl: string): number {
+  const parts = dataUrl.split(",");
+  if (parts.length < 2) return 0;
+  const base64 = parts[1];
+  let padding = 0;
+  if (base64.endsWith("==")) {
+    padding = 2;
+  } else if (base64.endsWith("=")) {
+    padding = 1;
+  }
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
+async function toNewImageUpload(
+  image: VendorImageAsset,
+): Promise<UpdateVendorImageUpload | null> {
+  if (image.file) {
+    const value = await readImageFileAsDataUrl(image.file);
+    return {
+      name: image.file.name || image.title || "image.png",
+      size: image.file.size,
+      type: image.file.type || "image/png",
+      value,
+    };
+  }
+
+  if (image.url.startsWith("data:image/")) {
+    const mime = image.url.slice(5, image.url.indexOf(";")) || "image/png";
+    return {
+      name: image.title || "image.png",
+      size:
+        typeof image.size === "number" && image.size > 0
+          ? image.size
+          : getBase64ByteLength(image.url),
+      type: mime,
+      value: image.url,
+    };
+  }
+
+  if (image.url.startsWith("blob:")) {
+    const blob = await fetch(image.url).then((response) => response.blob());
+    const file = new File([blob], image.title || "image.png", {
+      type: blob.type || "image/png",
+    });
+    const value = await readImageFileAsDataUrl(file);
+    return {
+      name: file.name,
+      size: file.size,
+      type: file.type || "image/png",
+      value,
+    };
+  }
+
+  return null;
+}
+
+export async function toUpdateVendorPayload(
+  data: VendorFormData,
+  mode: "save" | "draft",
+): Promise<UpdateVendorPayload> {
+  const deliveryAreasAndCost: UpdateVendorServiceMap<UpdateVendorAreaCost[]> = {
+    catering: [],
+    delivery: [],
+    setups: [],
+    hospitality: [],
+    feasts: [],
+  };
+  const minimumNotice: UpdateVendorServiceMap<number | null> = {
+    catering: null,
+    delivery: null,
+    setups: null,
+    hospitality: null,
+    feasts: null,
+  };
+  const capacity: UpdateVendorServiceMap<number | null> = {
+    catering: null,
+    delivery: null,
+    setups: null,
+    hospitality: null,
+    feasts: null,
+  };
+
+  const vendorimages: Partial<Record<VendorServiceId, UpdateVendorServiceImages>> = {};
+
+  for (const service of VENDOR_SERVICES) {
+    const id = service.id;
+    const enabled = data.servicesOffered.includes(id);
+    const fields = data.services[id];
+
+    deliveryAreasAndCost[id] = enabled
+      ? fields.deliveryAreas.map((entry) => ({
+          areaId: entry.areaId,
+          fees: toFees(entry.cost),
+        }))
+      : [];
+    minimumNotice[id] = toNumberOrNull(fields.minNotice, enabled);
+    capacity[id] = toNumberOrNull(fields.capacity, enabled);
+
+    const remainingKeys = new Set(
+      fields.images.map((img) => img.key?.trim()).filter(Boolean) as string[],
+    );
+    const initialKeys = data.initialServiceImageKeys?.[id] ?? [];
+    const autoDeleted = initialKeys.filter((key) => key && !remainingKeys.has(key));
+    const allDeletedKeys = Array.from(
+      new Set([
+        ...(data.deletedServiceImageKeys?.[id] ?? []),
+        ...autoDeleted,
+      ]),
+    ).filter(Boolean);
+
+    const deletedImages: UpdateVendorDeletedImage[] = allDeletedKeys.map((key) => ({
+      key,
+    }));
+
+    const newUploads = await Promise.all(
+      fields.images.map((img) => toNewImageUpload(img)),
+    );
+    const newImages = newUploads.filter(
+      (u): u is UpdateVendorImageUpload => u !== null,
+    );
+
+    if (deletedImages.length > 0 || newImages.length > 0) {
+      vendorimages[id] = {
+        ...(deletedImages.length > 0 ? { deletedImages } : {}),
+        ...(newImages.length > 0 ? { newImages } : {}),
+      };
+    }
+  }
+
+  let logoImg: UpdateVendorPayload["logoImg"] | undefined;
+  const logoNewUpload = data.logo ? await toNewImageUpload(data.logo) : null;
+  const logoNewImages = logoNewUpload ? [logoNewUpload] : [];
+
+  const initialLogoKey = data.initialLogoKey?.trim();
+  const currentLogoKey = data.logo?.key?.trim();
+  const logoAutoDeleted =
+    initialLogoKey && (!currentLogoKey || currentLogoKey !== initialLogoKey)
+      ? [initialLogoKey]
+      : [];
+  const logoDeletedKeys = Array.from(
+    new Set([
+      ...(data.deletedLogoKeys ?? []),
+      ...logoAutoDeleted,
+    ]),
+  ).filter(Boolean);
+  const logoDeletedImages: UpdateVendorDeletedImage[] = logoDeletedKeys.map(
+    (key) => ({ key }),
+  );
+
+  if (logoDeletedImages.length > 0 || logoNewImages.length > 0) {
+    logoImg = {
+      ...(logoDeletedImages.length > 0
+        ? { deletedImages: logoDeletedImages }
+        : {}),
+      ...(logoNewImages.length > 0 ? { newImages: logoNewImages } : {}),
+    };
+  }
+
+  const order =
+    typeof data.order === "number" && Number.isFinite(data.order)
+      ? data.order
+      : Number(data.order) || 0;
+
+  function toAmountNumber(val: unknown): number {
+    if (typeof val === "number" && Number.isFinite(val)) return val;
+    if (typeof val === "string" && val.trim()) {
+      const parsed = Number(val.trim());
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return 0;
+  }
+
+  return {
+    name: {
+      en: data.englishName.trim(),
+      ar: data.arabicName.trim(),
+    },
+    tagline: {
+      en: data.englishTagline.trim(),
+      ar: data.arabicTagline.trim(),
+    },
+    shortDescription: {
+      en: data.englishShortDescription.trim(),
+      ar: data.arabicShortDescription.trim(),
+    },
+    published: mode === "draft" ? false : Boolean(data.published),
+    percentage: toPercentage(data.percentage),
+    order,
+    isFullyBooked: Boolean(data.isFullyBooked),
+    doublePointReward: Boolean(data.doublePoints),
+    serviceCategories: [...data.servicesOffered],
+    deliveryAreasAndCost,
+    minimumNotice,
+    capacity,
+    minimumOrderAmountCatering: toAmountNumber(data.minimumOrderAmountCatering),
+    minimumOrderAmountDelivery: toAmountNumber(data.minimumOrderAmountDelivery),
+    minimumOrderTimeInHours: toAmountNumber(data.minimumOrderTimeInHours),
+    contactInfo: {
+      primaryEmail: data.email.trim(),
+      secondaryEmail: data.secondaryEmail?.trim() ?? "",
+      accountingEmails: Array.isArray(data.accountingEmails)
+        ? data.accountingEmails.map((e) => e.trim()).filter(Boolean)
+        : [],
+      mobile: data.mobile.trim(),
+      phone: data.phone.trim(),
+    },
+    collectionIds: Array.isArray(data.collectionIds) ? data.collectionIds : [],
+    vendorimages,
+    ...(logoImg ? { logoImg } : {}),
+  };
+}
+
 export async function saveVendorForm(
   data: VendorFormData,
   mode: "save" | "draft",
 ): Promise<{ ok: true; id: string; mode: "save" | "draft"; message: string }> {
   if (data.id) {
-    await delay(350);
+    const payload = await toUpdateVendorPayload(data, mode);
+    const updated = await updateVendor(data.id, payload);
+
+    const { invalidateVendorFilterOptionsCache } = await import("@/lib/vendors");
+    invalidateVendorFilterOptionsCache();
+
     return {
       ok: true,
       id: data.id,
       mode,
-      message:
-        mode === "draft"
-          ? "Saved as draft (static mock)."
-          : "Vendor saved (static mock).",
+      message: updated.message,
     };
   }
 
@@ -364,6 +685,10 @@ export async function saveVendorForm(
     mode === "draft"
       ? await createVendorDraft(payload)
       : await createVendor(payload);
+
+  const { invalidateVendorFilterOptionsCache } = await import("@/lib/vendors");
+  invalidateVendorFilterOptionsCache();
+
   return {
     ok: true,
     id: created.id,

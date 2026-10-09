@@ -1,265 +1,24 @@
 import type {
+  OrderCancellationRequest,
+  OrderDetail,
+  OrderHistoryEntry,
+  OrderListTab,
   OrderRecord,
-  OrderVendorOption,
   OrdersQuery,
   OrdersResponse,
-  OrderDetail,
+  OrderStatus,
 } from "@/lib/types";
+import {
+  getOrderDetails,
+  getOrders,
+  type OrderDetailApiCancelationRequest,
+  type OrderDetailApiData,
+  type OrderDetailApiHistoryItem,
+  type OrderListApiItem,
+  type OrdersListQueryParams,
+} from "@/services/orders";
 
-const MOCK_ORDERS: OrderRecord[] = [
-  {
-    id: "ord-1000860",
-    orderNumber: 1000860,
-    vendorId: "v-larc",
-    vendorEnglish: "LARC",
-    vendorArabic: "لارك",
-    orderDate: "2026-03-27T15:19:00.000Z",
-    deliveryDate: "2026-03-31T15:00:00.000Z",
-    status: "onhold",
-    statusUpdatedAt: "2026-03-27T15:19:00.000Z",
-    isLate: true,
-    paymentMethod: "Cash",
-    paymentStatus: "successful",
-    totalPrice: 3600,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000856",
-    orderNumber: 1000856,
-    vendorId: "v-sultan",
-    vendorEnglish: "Al Sultan",
-    vendorArabic: "السلطان",
-    orderDate: "2026-03-25T18:05:00.000Z",
-    deliveryDate: "2026-03-28T18:00:00.000Z",
-    status: "onhold",
-    statusUpdatedAt: "2026-03-25T18:05:00.000Z",
-    isLate: true,
-    paymentMethod: "Cash",
-    paymentStatus: "successful",
-    totalPrice: 1800,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000850",
-    orderNumber: 1000850,
-    vendorId: "v-sultan",
-    vendorEnglish: "Al Sultan",
-    vendorArabic: "السلطان",
-    orderDate: "2026-03-24T11:30:00.000Z",
-    deliveryDate: "2026-03-27T11:30:00.000Z",
-    status: "onhold",
-    statusUpdatedAt: "2026-03-24T11:30:00.000Z",
-    isLate: true,
-    paymentMethod: "Cash",
-    paymentStatus: "successful",
-    totalPrice: 1800,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000845",
-    orderNumber: 1000845,
-    vendorId: "v-larc",
-    vendorEnglish: "LARC",
-    vendorArabic: "لارك",
-    orderDate: "2026-03-23T08:15:00.000Z",
-    deliveryDate: "2026-03-26T08:00:00.000Z",
-    status: "onhold",
-    statusUpdatedAt: "2026-03-23T08:15:00.000Z",
-    isLate: true,
-    paymentMethod: "Cash",
-    paymentStatus: "successful",
-    totalPrice: 3600,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000838",
-    orderNumber: 1000838,
-    vendorId: "v-melenzane",
-    vendorEnglish: "Melenzane",
-    vendorArabic: "ملنزاني",
-    orderDate: "2026-08-28T10:00:00.000Z",
-    deliveryDate: "2026-08-30T14:00:00.000Z",
-    status: "confirmed",
-    statusUpdatedAt: "2026-08-29T09:12:00.000Z",
-    isLate: false,
-    paymentMethod: "Card",
-    paymentStatus: "successful",
-    totalPrice: 2450,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000831",
-    orderNumber: 1000831,
-    vendorId: "v-exit55",
-    vendorEnglish: "Exit 55",
-    vendorArabic: "اكزت ٥٥",
-    orderDate: "2026-08-27T16:45:00.000Z",
-    deliveryDate: "2026-08-29T12:00:00.000Z",
-    status: "preparing",
-    statusUpdatedAt: "2026-08-30T08:30:00.000Z",
-    isLate: false,
-    paymentMethod: "Online",
-    paymentStatus: "successful",
-    totalPrice: 5200,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000824",
-    orderNumber: 1000824,
-    vendorId: "v-larc",
-    vendorEnglish: "LARC",
-    vendorArabic: "لارك",
-    orderDate: "2026-08-26T07:20:00.000Z",
-    deliveryDate: "2026-08-28T18:30:00.000Z",
-    status: "onhold",
-    statusUpdatedAt: "2026-08-27T11:00:00.000Z",
-    isLate: false,
-    paymentMethod: "Cash",
-    paymentStatus: "pending",
-    totalPrice: 4100,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000815",
-    orderNumber: 1000815,
-    vendorId: "v-sable",
-    vendorEnglish: "Sable Sweets",
-    vendorArabic: "حلويات سابليه",
-    orderDate: "2026-08-25T13:10:00.000Z",
-    deliveryDate: "2026-08-27T09:00:00.000Z",
-    status: "cancelled",
-    statusUpdatedAt: "2026-08-26T10:05:00.000Z",
-    isLate: false,
-    paymentMethod: "Card",
-    paymentStatus: "failed",
-    totalPrice: 950,
-    currency: "QR",
-    isCancelled: true,
-    isCompleted: false,
-  },
-  {
-    id: "ord-1000802",
-    orderNumber: 1000802,
-    vendorId: "v-pearl",
-    vendorEnglish: "Pearl Events",
-    vendorArabic: "لؤلؤة للمناسبات",
-    orderDate: "2026-08-20T09:00:00.000Z",
-    deliveryDate: "2026-08-22T17:00:00.000Z",
-    status: "delivered",
-    statusUpdatedAt: "2026-08-22T17:45:00.000Z",
-    isLate: false,
-    paymentMethod: "Online",
-    paymentStatus: "successful",
-    totalPrice: 7800,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: true,
-  },
-  {
-    id: "ord-1000795",
-    orderNumber: 1000795,
-    vendorId: "v-sultan",
-    vendorEnglish: "Al Sultan",
-    vendorArabic: "السلطان",
-    orderDate: "2026-08-18T11:30:00.000Z",
-    deliveryDate: "2026-08-20T19:00:00.000Z",
-    status: "delivered",
-    statusUpdatedAt: "2026-08-20T19:30:00.000Z",
-    isLate: false,
-    paymentMethod: "Cash",
-    paymentStatus: "successful",
-    totalPrice: 2200,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: true,
-  },
-  {
-    id: "ord-1000788",
-    orderNumber: 1000788,
-    vendorId: "v-melenzane",
-    vendorEnglish: "Melenzane",
-    vendorArabic: "ملنزاني",
-    orderDate: "2026-08-15T14:20:00.000Z",
-    deliveryDate: "2026-08-17T12:00:00.000Z",
-    status: "delivered",
-    statusUpdatedAt: "2026-08-17T12:15:00.000Z",
-    isLate: false,
-    paymentMethod: "Card",
-    paymentStatus: "successful",
-    totalPrice: 1650,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: true,
-  },
-  {
-    id: "ord-1000771",
-    orderNumber: 1000771,
-    vendorId: "v-exit55",
-    vendorEnglish: "Exit 55",
-    vendorArabic: "اكزت ٥٥",
-    orderDate: "2026-08-10T08:45:00.000Z",
-    deliveryDate: "2026-08-12T20:00:00.000Z",
-    status: "delivered",
-    statusUpdatedAt: "2026-08-12T20:10:00.000Z",
-    isLate: false,
-    paymentMethod: "Online",
-    paymentStatus: "successful",
-    totalPrice: 6300,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: true,
-  },
-  {
-    id: "ord-1000760",
-    orderNumber: 1000760,
-    vendorId: "v-larc",
-    vendorEnglish: "LARC",
-    vendorArabic: "لارك",
-    orderDate: "2026-08-05T10:00:00.000Z",
-    deliveryDate: "2026-08-07T16:00:00.000Z",
-    status: "delivered",
-    statusUpdatedAt: "2026-08-07T16:20:00.000Z",
-    isLate: false,
-    paymentMethod: "Cash",
-    paymentStatus: "successful",
-    totalPrice: 3900,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: true,
-  },
-  {
-    id: "ord-1000752",
-    orderNumber: 1000752,
-    vendorId: "v-sable",
-    vendorEnglish: "Sable Sweets",
-    vendorArabic: "حلويات سابليه",
-    orderDate: "2026-07-28T12:00:00.000Z",
-    deliveryDate: "2026-07-30T10:30:00.000Z",
-    status: "delivered",
-    statusUpdatedAt: "2026-07-30T10:45:00.000Z",
-    isLate: false,
-    paymentMethod: "Card",
-    paymentStatus: "successful",
-    totalPrice: 1100,
-    currency: "QR",
-    isCancelled: false,
-    isCompleted: true,
-  },
-];
+const DEFAULT_CURRENCY = "QAR";
 
 export const ORDER_STATUS_OPTIONS = [
   { value: "", label: "Any status" },
@@ -267,6 +26,7 @@ export const ORDER_STATUS_OPTIONS = [
   { value: "confirmed", label: "Confirmed" },
   { value: "preparing", label: "Preparing" },
   { value: "delivered", label: "Delivered" },
+  { value: "canceled", label: "Canceled" },
   { value: "cancelled", label: "Cancelled" },
 ] as const;
 
@@ -282,11 +42,91 @@ export const UPDATED_LAST_4_DAYS_OPTIONS = [
   { value: "no", label: "No" },
 ] as const;
 
-function delay(ms = 280) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function toOrdersApiQuery(query: OrdersQuery): OrdersListQueryParams {
+  const cancellationStatus =
+    query.cancellationStatus === "cancelled" ||
+    query.cancellationStatus === "not_cancelled"
+      ? query.cancellationStatus
+      : undefined;
+
+  const updatedInLast4Days =
+    query.updatedInLast4Days === "yes" || query.updatedInLast4Days === "no"
+      ? query.updatedInLast4Days
+      : undefined;
+
+  return {
+    orderType: query.tab,
+    page: Math.max(1, query.page),
+    limit: Math.max(1, query.pageSize),
+    orderId: query.orderId?.trim() || undefined,
+    vendorId: query.vendorId?.trim() || undefined,
+    eventDate: query.eventDate?.trim() || undefined,
+    cancellationStatus,
+    status: query.orderStatus?.trim() || undefined,
+    updatedInLast4Days,
+  };
+}
+
+function clean(value?: string) {
+  return value?.replace(/\s+/g, " ").trim() || "";
+}
+
+function toNumber(value: unknown, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function isCancelledStatus(status: string) {
+  const normalized = status.trim().toLowerCase();
+  return normalized === "cancelled" || normalized === "canceled";
+}
+
+function toOrderStatus(value?: string): OrderStatus | string {
+  const status = clean(value).toLowerCase();
+  if (!status) return "onhold";
+  if (status === "canceled") return "cancelled";
+  return status;
+}
+
+export function mapOrderListItem(
+  item: OrderListApiItem,
+  tab: OrderListTab,
+): OrderRecord | null {
+  const orderNumber = toNumber(item.orderId, NaN);
+  if (!Number.isFinite(orderNumber)) return null;
+
+  const status = toOrderStatus(item.status);
+  const eventDate = item.eventDate ?? "";
+
+  return {
+    id: String(orderNumber),
+    orderNumber,
+    vendorId: "",
+    vendorEnglish: clean(item.vendor?.en),
+    vendorArabic: clean(item.vendor?.ar),
+    orderDate: eventDate,
+    deliveryDate: eventDate,
+    status,
+    statusUpdatedAt: eventDate,
+    isLate: false,
+    paymentMethod: clean(item.paymentMethod) || "Cash",
+    paymentStatus: clean(item.paymentStatus).toLowerCase() || "pending",
+    totalPrice: toNumber(item.totalPrice),
+    currency: DEFAULT_CURRENCY,
+    isCancelled: isCancelledStatus(String(status)),
+    isCompleted: tab === "completed",
+  };
 }
 
 export function formatOrderDateTime(value: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -294,11 +134,14 @@ export function formatOrderDateTime(value: string) {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function formatRelativeTime(value: string, base = Date.now()) {
+  if (!value) return "";
   const target = new Date(value).getTime();
+  if (Number.isNaN(target)) return "";
+
   const diffMs = target - base;
   const absMs = Math.abs(diffMs);
   const minute = 60_000;
@@ -333,116 +176,44 @@ export function formatStatusLabel(status: string) {
   return status.replace(/_/g, " ");
 }
 
-export function formatPaymentLine(
-  method: string,
-  status: string,
-): string {
+export function formatPaymentLine(method: string, status: string): string {
   return `${method} (${status})`;
 }
 
-function toDayStart(value: string) {
-  return new Date(`${value}T00:00:00.000Z`).getTime();
-}
-
-function toDayEnd(value: string) {
-  return new Date(`${value}T23:59:59.999Z`).getTime();
-}
-
-function isWithinLast4Days(value: string, now = Date.now()) {
-  const fourDaysAgo = now - 4 * 24 * 60 * 60 * 1000;
-  const stamp = new Date(value).getTime();
-  return stamp >= fourDaysAgo && stamp <= now;
-}
-
-function filterOrders(orders: OrderRecord[], query: OrdersQuery) {
-  const orderIdNeedle = query.orderId?.trim() ?? "";
-  const eventDay = query.eventDate ? toDayStart(query.eventDate) : null;
-  const eventDayEnd = query.eventDate ? toDayEnd(query.eventDate) : null;
-
-  return orders
-    .filter((order) => {
-      const matchesTab =
-        query.tab === "completed" ? order.isCompleted : !order.isCompleted;
-      if (!matchesTab) return false;
-
-      if (orderIdNeedle && !String(order.orderNumber).includes(orderIdNeedle)) {
-        return false;
-      }
-
-      if (query.vendorId && order.vendorId !== query.vendorId) return false;
-
-      if (eventDay !== null && eventDayEnd !== null) {
-        const delivery = new Date(order.deliveryDate).getTime();
-        if (delivery < eventDay || delivery > eventDayEnd) return false;
-      }
-
-      if (query.cancellationStatus === "cancelled" && !order.isCancelled) {
-        return false;
-      }
-      if (query.cancellationStatus === "not_cancelled" && order.isCancelled) {
-        return false;
-      }
-
-      if (query.orderStatus && order.status !== query.orderStatus) return false;
-
-      if (query.updatedInLast4Days === "yes") {
-        if (!isWithinLast4Days(order.statusUpdatedAt)) return false;
-      }
-      if (query.updatedInLast4Days === "no") {
-        if (isWithinLast4Days(order.statusUpdatedAt)) return false;
-      }
-
-      return true;
-    })
-    .sort((a, b) => {
-      const diff =
-        new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime();
-      return query.sortDir === "asc" ? diff : -diff;
-    });
-}
-
-export function getOrderVendorOptions(): OrderVendorOption[] {
-  const seen = new Map<string, OrderVendorOption>();
-  for (const order of MOCK_ORDERS) {
-    if (!seen.has(order.vendorId)) {
-      seen.set(order.vendorId, {
-        id: order.vendorId,
-        label: `${order.vendorEnglish} / ${order.vendorArabic}`,
-      });
-    }
-  }
-  return Array.from(seen.values()).sort((a, b) =>
-    a.label.localeCompare(b.label),
-  );
-}
-
-/** Swap this for a real API call when available. */
+/** GET /admin/orders */
 export async function fetchOrders(query: OrdersQuery): Promise<OrdersResponse> {
-  await delay();
+  const payload = await getOrders(toOrdersApiQuery(query));
 
-  const filtered = filterOrders(MOCK_ORDERS, query);
-  const pageSize = Math.max(1, query.pageSize);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize) || 1);
-  const page = Math.min(Math.max(1, query.page), totalPages);
-  const start = (page - 1) * pageSize;
+  const items = payload.items
+    .map((item) => mapOrderListItem(item, query.tab))
+    .filter((item): item is OrderRecord => item !== null);
 
   return {
-    items: filtered.slice(start, start + pageSize).map((order) => ({ ...order })),
-    total: filtered.length,
-    page,
-    pageSize,
+    items,
+    total: payload.pagination.total,
+    page: payload.pagination.page,
+    pageSize: payload.pagination.limit,
   };
 }
 
 export async function fetchOrdersForExport(
   query: Omit<OrdersQuery, "page" | "pageSize">,
 ): Promise<OrderRecord[]> {
-  await delay(120);
-  return filterOrders(MOCK_ORDERS, {
-    ...query,
-    page: 1,
-    pageSize: MOCK_ORDERS.length,
-  });
+  const first = await getOrders(
+    toOrdersApiQuery({ ...query, page: 1, pageSize: 20 }),
+  );
+
+  const total = Math.max(1, first.pagination.total);
+  const payload =
+    total <= first.items.length
+      ? first
+      : await getOrders(
+          toOrdersApiQuery({ ...query, page: 1, pageSize: total }),
+        );
+
+  return payload.items
+    .map((item) => mapOrderListItem(item, query.tab))
+    .filter((item): item is OrderRecord => item !== null);
 }
 
 export function ordersToCsv(orders: OrderRecord[]) {
@@ -490,109 +261,105 @@ export function downloadOrdersCsv(orders: OrderRecord[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function getOrderById(id: string) {
-  return MOCK_ORDERS.find((order) => order.id === id) ?? null;
-}
-
-const ORDER_DETAIL_OVERRIDES: Record<string, Partial<OrderDetail>> = {
-  "ord-1000860": {
-    subTotal: 3600,
-    deliveryCharges: 0,
-    address: {
-      zoneEnglish: "Doha Center",
-      zoneArabic: "مركز الدوحة",
-      areaEnglish: "Al Jasra",
-      areaArabic: "الجسرة",
-      street: "Doha",
-      building: "",
-      floor: "",
-      apartment: "",
-      mobile: "+97456588886",
-      mapsUrl: "https://maps.google.com/?q=Al+Jasra,Doha,Qatar",
-    },
-    customer: {
-      name: "test",
-      mobile: "+97456588886",
-      email: "test11@gmail.com",
-      joinDate: "2026-02-06T00:00:00.000Z",
-    },
-    vendor: {
-      englishName: "LARC",
-      arabicName: "لارك",
-      rating: null,
-      reviewCount: 0,
-    },
-    history: [
-      {
-        id: "hist-1",
-        date: "2026-03-27T15:19:00.000Z",
-        status: "onhold",
-        by: "customer",
-      },
-    ],
-    cancellationRequests: [
-      {
-        id: "cancel-req-1",
-        initiator: "customer",
-        initiatedDate: "2026-08-31T10:25:00.000Z",
-        cancellationReason: "",
-        decided: false,
-        decidedBy: null,
-        decidedDate: null,
-        approved: null,
-      },
-    ],
-  },
-};
-
-function buildOrderDetail(order: OrderRecord): OrderDetail {
-  const override = ORDER_DETAIL_OVERRIDES[order.id] ?? {};
+function mapOrderHistoryEntry(
+  item: OrderDetailApiHistoryItem,
+  index: number,
+): OrderHistoryEntry {
   return {
-    ...order,
-    subTotal: override.subTotal ?? order.totalPrice,
-    deliveryCharges: override.deliveryCharges ?? 0,
-    address: override.address ?? {
-      zoneEnglish: "Doha",
-      zoneArabic: "الدوحة",
-      areaEnglish: "Central",
-      areaArabic: "وسط",
-      street: "Doha",
-      building: "",
-      floor: "",
-      apartment: "",
-      mobile: "+97400000000",
-      mapsUrl: "https://maps.google.com/?q=Doha,Qatar",
-    },
-    customer: override.customer ?? {
-      name: "Guest customer",
-      mobile: "+97400000000",
-      email: "guest@example.com",
-      joinDate: order.orderDate,
-    },
-    vendor: override.vendor ?? {
-      englishName: order.vendorEnglish,
-      arabicName: order.vendorArabic,
-      rating: 85,
-      reviewCount: 12,
-    },
-    history: override.history ?? [
-      {
-        id: `${order.id}-hist-1`,
-        date: order.orderDate,
-        status: order.status,
-        by: "customer",
-      },
-    ],
-    cancellationRequests: override.cancellationRequests ?? [],
+    id: `hist-${index}-${item.date ?? index}`,
+    date: item.date ?? "",
+    status: toOrderStatus(item.status),
+    by: clean(item.by) || "—",
   };
 }
 
-/** Swap for a real API call when available. */
+function mapCancellationRequest(
+  item: OrderDetailApiCancelationRequest,
+  index: number,
+): OrderCancellationRequest {
+  return {
+    id: clean(item._id) || clean(item.id) || `cancel-${index}`,
+    initiator: clean(item.initiator) || "—",
+    initiatedDate: item.initiatedDate ?? item.initiatedAt ?? "",
+    cancellationReason:
+      clean(item.cancellationReason) || clean(item.cancelationReason),
+    decided: typeof item.decided === "boolean" ? item.decided : null,
+    decidedBy: item.decidedBy ? clean(item.decidedBy) : null,
+    decidedDate: item.decidedDate ?? null,
+    approved: typeof item.approved === "boolean" ? item.approved : null,
+  };
+}
+
+function mapOrderDetail(data: OrderDetailApiData): OrderDetail | null {
+  const orderNumber = toNumber(data.orderId, NaN);
+  if (!Number.isFinite(orderNumber)) return null;
+
+  const status = toOrderStatus(data.status ?? data.orderDetails?.status);
+  const orderDate = data.orderDetails?.orderDate ?? "";
+  const eventDate = data.orderDetails?.eventDate ?? "";
+  const payment = data.paymentDetails;
+  const address = data.customerAddress;
+  const cancelRequests =
+    data.cancelationRequests ?? data.cancellationRequests ?? [];
+
+  return {
+    id: String(orderNumber),
+    orderNumber,
+    vendorId: "",
+    vendorEnglish: clean(data.vendor?.name?.en),
+    vendorArabic: clean(data.vendor?.name?.ar),
+    orderDate,
+    deliveryDate: eventDate,
+    status,
+    statusUpdatedAt: orderDate,
+    isLate: false,
+    paymentMethod: clean(payment?.paymentMethod) || "Cash",
+    paymentStatus: clean(payment?.paymentStatus).toLowerCase() || "pending",
+    totalPrice: toNumber(payment?.totalPrice),
+    currency: DEFAULT_CURRENCY,
+    isCancelled: isCancelledStatus(String(status)),
+    isCompleted: isCancelledStatus(String(status))
+      ? true
+      : String(status).toLowerCase() === "delivered",
+    subTotal: toNumber(payment?.subTotal),
+    deliveryCharges: toNumber(payment?.deliveryCharges),
+    address: {
+      zoneEnglish: clean(address?.zone?.en),
+      zoneArabic: clean(address?.zone?.ar),
+      areaEnglish: clean(address?.area?.en),
+      areaArabic: clean(address?.area?.ar),
+      street: clean(address?.street),
+      building: clean(address?.building),
+      floor: clean(address?.floor),
+      apartment: clean(address?.apartment),
+      mobile: clean(address?.mobile),
+      mapsUrl: clean(address?.mapsUrl),
+    },
+    customer: {
+      name: clean(data.customer?.name),
+      mobile: clean(data.customer?.mobile),
+      email: clean(data.customer?.email),
+      joinDate: data.customer?.joinDate ?? "",
+    },
+    vendor: {
+      englishName: clean(data.vendor?.name?.en),
+      arabicName: clean(data.vendor?.name?.ar),
+      rating:
+        typeof data.vendor?.rating === "number" ? data.vendor.rating : null,
+      reviewCount: toNumber(data.vendor?.reviewCount),
+    },
+    history: (data.orderHistory ?? []).map(mapOrderHistoryEntry),
+    cancellationRequests: cancelRequests.map(mapCancellationRequest),
+  };
+}
+
+/** GET /admin/orders/orderDetails/:id */
 export async function fetchOrderDetail(id: string): Promise<OrderDetail | null> {
-  await delay();
-  const order = getOrderById(id);
-  if (!order) return null;
-  return buildOrderDetail(order);
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+
+  const data = await getOrderDetails(trimmed);
+  return mapOrderDetail(data);
 }
 
 export function formatJoinDate(value: string) {

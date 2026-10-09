@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { VENDOR_SECTION_META, ORDERS_SECTION_META, PROMO_CODES_SECTION_META, SEARCH_CATEGORIES_SECTION_META, CUSTOMERS_SECTION_META, USERS_SECTION_META, LOCATIONS_SECTION_META, COLLECTIONS_SECTION_META, POPULAR_SECTION_META, FILTER_TYPES_SECTION_META } from "@/lib/nav";
+import { VENDOR_SECTION_META, ORDERS_SECTION_META, PROMO_CODES_SECTION_META, SEARCH_CATEGORIES_SECTION_META, CUSTOMERS_SECTION_META, USERS_SECTION_META, LOCATIONS_SECTION_META, COLLECTIONS_SECTION_META, POPULAR_SECTION_META, FILTER_TYPES_SECTION_META, BANNERS_SECTION_META } from "@/lib/nav";
 
 function pageTitle(pathname: string) {
   if (pathname.includes("/analysis/popular-items") || pathname.startsWith("/popular/items")) {
@@ -71,6 +71,8 @@ function pageTitle(pathname: string) {
   if (/^\/users\/[^/]+$/.test(pathname)) return "User Details";
   if (pathname === "/filter-types/new") return "Add Filter Type";
   if (/^\/filter-types\/[^/]+\/edit$/.test(pathname)) return "Edit Filter Type";
+  if (pathname === "/banners/new") return "Add Banner";
+  if (/^\/banners\/[^/]+(\/edit)?$/.test(pathname)) return "Edit Banner";
 
   const ordersMeta = ORDERS_SECTION_META[pathname];
   if (ordersMeta) return ordersMeta.title;
@@ -99,6 +101,9 @@ function pageTitle(pathname: string) {
   const filterTypesMeta = FILTER_TYPES_SECTION_META[pathname];
   if (filterTypesMeta) return filterTypesMeta.title;
 
+  const bannersMeta = BANNERS_SECTION_META[pathname];
+  if (bannersMeta) return bannersMeta.title;
+
   const vendorMeta = VENDOR_SECTION_META[pathname];
   if (vendorMeta) return vendorMeta.title;
 
@@ -111,6 +116,7 @@ function pageTitle(pathname: string) {
   if (pathname.startsWith("/collections")) return "Collections";
   if (pathname.startsWith("/popular")) return "Popular";
   if (pathname.startsWith("/filter-types")) return "Filter Types";
+  if (pathname.startsWith("/banners")) return "Banners";
   if (pathname.startsWith("/vendors")) return "Vendors";
   return "Admin";
 }

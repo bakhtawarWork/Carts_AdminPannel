@@ -235,5 +235,22 @@ export function NavIconGlyph({
           />
         </svg>
       );
+    case "banners":
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v7A1.5 1.5 0 0 1 18.5 15h-13A1.5 1.5 0 0 1 4 13.5v-7Z"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M8 19h8M12 15v4"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
   }
 }

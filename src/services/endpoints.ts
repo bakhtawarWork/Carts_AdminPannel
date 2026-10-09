@@ -23,10 +23,33 @@ export const VENDOR_ENDPOINTS = {
   filters: "vendors/filters",
   reviews: "vendors/reviews",
   policy: "vendors/policy",
-  /** Set this path when the vendor-registrations endpoint is available. */
-  registrations: "" as string,
+  registrations: "vendors/registrations",
 } as const;
 
 export const LOCATION_ENDPOINTS = {
   list: "locations",
 } as const;
+
+export const ORDER_ENDPOINTS = {
+  list: "orders",
+  details: "orders/orderDetails",
+} as const;
+
+export const PROMO_CODE_ENDPOINTS = {
+  list: "promocode/promocode",
+  create: "promocode/create",
+  details: "promocode",
+  update: "promocode/update",
+  delete: "promocode/delete",
+} as const;
+
+export const BANNER_ENDPOINTS = {
+  list: "banners",
+  create: "banners",
+  details: (id: string) => `banners/${id}`,
+  update: (id: string) => `banners/${id}`,
+  status: (id: string) => `banners/${id}/status`,
+  delete: (id: string) => `banners/${id}`,
+  dashboard: "banners/dashboard",
+} as const;
+

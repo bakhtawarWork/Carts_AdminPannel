@@ -231,14 +231,8 @@ export type VendorRegistrationRecord = {
 };
 
 export type VendorRegistrationsQuery = {
-  company?: string;
-  category?: VendorRegistrationCategory | "";
-  licensed?: "all" | "yes" | "no";
-  createdFrom?: string;
-  createdTo?: string;
   page: number;
   pageSize: number;
-  sortDir?: "asc" | "desc";
 };
 
 export type VendorRegistrationsResponse = {
@@ -283,6 +277,7 @@ export type VendorUserRecord = {
   name: string;
   email: string;
   mobile: string;
+  preferredLanguage: string;
   blocked: boolean;
   createdAt: string;
 };
@@ -292,6 +287,9 @@ export type VendorUserFormData = {
   email: string;
   mobile: string;
   password: string;
+  preferredLanguage?: string;
+  gender?: string;
+  isBlocked: boolean;
 };
 
 export type VendorUsersResponse = {
@@ -505,9 +503,15 @@ export type OfferingOptionItem = OfferingBilingualLine & {
 export type OfferingGalleryImage = {
   id: string;
   url: string;
+  originalUrl?: string;
+  cdnUrl?: string;
+  key?: string;
+  filename?: string;
   alt: string;
   name?: string;
   type?: string;
+  size?: number;
+  isExisting?: boolean;
 };
 
 export type OfferingOptionSection = {
@@ -527,6 +531,11 @@ export type OfferingFormData = {
   englishShortDescription: string;
   arabicShortDescription: string;
   gallery: OfferingGalleryImage[];
+  initialExistingImageKeys?: string[];
+  deletedImageKeys?: string[];
+  order?: number;
+  approveStatus?: string;
+  collectionIds?: string[];
   offeringType: string;
   categoryId: string;
   published: boolean;
@@ -581,11 +590,12 @@ export type OrderStatus =
   | "confirmed"
   | "preparing"
   | "delivered"
-  | "cancelled";
+  | "cancelled"
+  | "canceled";
 
-export type PaymentMethod = "Cash" | "Card" | "Online";
+export type PaymentMethod = "Cash" | "Card" | "Online" | string;
 
-export type PaymentStatus = "successful" | "pending" | "failed";
+export type PaymentStatus = "successful" | "pending" | "failed" | string;
 
 export type OrderRecord = {
   id: string;
@@ -595,7 +605,7 @@ export type OrderRecord = {
   vendorArabic: string;
   orderDate: string;
   deliveryDate: string;
-  status: OrderStatus;
+  status: OrderStatus | string;
   statusUpdatedAt: string;
   isLate: boolean;
   paymentMethod: PaymentMethod;
@@ -621,7 +631,6 @@ export type OrdersQuery = {
   updatedInLast4Days?: "any" | "yes" | "no";
   page: number;
   pageSize: number;
-  sortDir?: "asc" | "desc";
 };
 
 export type OrdersResponse = {
@@ -634,7 +643,7 @@ export type OrdersResponse = {
 export type OrderHistoryEntry = {
   id: string;
   date: string;
-  status: OrderStatus;
+  status: OrderStatus | string;
   by: string;
 };
 
@@ -751,7 +760,10 @@ export type VendorImageAsset = {
   url: string;
   title: string;
   alt: string;
+  key?: string;
   file?: File;
+  size?: number;
+  isExisting?: boolean;
 };
 
 export type VendorDeliveryAreaEntry = {
@@ -792,11 +804,51 @@ export type VendorFormData = {
   arabicShortDescription: string;
   logo: VendorImageAsset | null;
   email: string;
+  secondaryEmail?: string;
+  accountingEmails?: string[];
   mobile: string;
   phone: string;
   published: boolean;
   doublePoints: boolean;
   percentage: string;
+  order?: number;
+  isFullyBooked?: boolean;
+  minimumOrderAmountCatering?: string;
+  minimumOrderAmountDelivery?: string;
+  minimumOrderTimeInHours?: string;
+  collectionIds?: string[];
   servicesOffered: VendorServiceId[];
   services: Record<VendorServiceId, VendorServiceFields>;
+  initialLogoKey?: string;
+  deletedLogoKeys?: string[];
+  initialServiceImageKeys?: Partial<Record<VendorServiceId, string[]>>;
+  deletedServiceImageKeys?: Partial<Record<VendorServiceId, string[]>>;
 };
+
+export type BannerType = "main" | "sub";
+
+export type BannerRecord = {
+  id: string;
+  type: BannerType;
+  name: string;
+  nameAr?: string;
+  imageUrl: string;
+  sequence: number;
+  isActive: boolean;
+  redirectionPath?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BannerFormData = {
+  type: BannerType;
+  name: string;
+  nameAr?: string;
+  imageUrl: string;
+  sequence: string;
+  isActive: boolean;
+  redirectionPath: string;
+  imageFileName?: string;
+  imageFileType?: string;
+};
+

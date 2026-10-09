@@ -6,103 +6,13 @@ import type {
   SearchCategoryVendorOption,
 } from "@/lib/types";
 
-export const SEARCH_CATEGORY_VENDOR_OPTIONS: SearchCategoryVendorOption[] = [
-  {
-    id: "v-f-planner",
-    englishName: "The F Planner",
-    arabicName: "ذا اف بلانر",
-  },
-  {
-    id: "v-kovalenko",
-    englishName: "Kovalenko vendor",
-    arabicName: "Kovalenko vendor",
-  },
-  {
-    id: "v-liwan",
-    englishName: "Al Liwan",
-    arabicName: "الليوان",
-  },
-  {
-    id: "v-melenzane",
-    englishName: "Melenzane",
-    arabicName: "ملنزاني",
-  },
-  {
-    id: "v-larc",
-    englishName: "LARC",
-    arabicName: "لارك",
-  },
-  {
-    id: "v-sultan",
-    englishName: "Al Sultan",
-    arabicName: "السلطان",
-  },
-  {
-    id: "v-exit55",
-    englishName: "Exit 55",
-    arabicName: "اكزت ٥٥",
-  },
-];
+export const SEARCH_CATEGORY_VENDOR_OPTIONS: SearchCategoryVendorOption[] = [];
 
 type SearchCategorySectionDetail = SearchCategorySectionRecord & {
   categories: SearchCategorySectionFormData["categories"];
 };
 
-let sectionsState: SearchCategorySectionDetail[] = [
-  {
-    id: "scs-1",
-    published: true,
-    englishName: "Top Categories",
-    arabicName: "افضل الاصناف",
-    categoryCount: 2,
-    categories: [
-      {
-        id: "sc-1",
-        englishName: "Birthday",
-        arabicName: "عيد ميلاد",
-        published: true,
-        imageUrl:
-          "https://images.unsplash.com/photo-1464349095439-e9a21285bc5c?w=200&h=200&fit=crop",
-        vendorIds: ["v-f-planner", "v-liwan"],
-      },
-      {
-        id: "sc-2",
-        englishName: "Wedding",
-        arabicName: "زفاف",
-        published: true,
-        imageUrl:
-          "https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=200&h=200&fit=crop",
-        vendorIds: ["v-kovalenko"],
-      },
-    ],
-  },
-  {
-    id: "scs-2",
-    published: true,
-    englishName: "Other",
-    arabicName: "أخرى",
-    categoryCount: 0,
-    categories: [],
-  },
-  {
-    id: "scs-3",
-    published: true,
-    englishName: "Cinema & Snacks",
-    arabicName: "سينما وسناكات",
-    categoryCount: 1,
-    categories: [
-      {
-        id: "sc-4",
-        englishName: "Popcorn",
-        arabicName: "فشار",
-        published: true,
-        imageUrl:
-          "https://images.unsplash.com/photo-1578849278619-e73505e9610f?w=200&h=200&fit=crop",
-        vendorIds: ["v-melenzane", "v-exit55"],
-      },
-    ],
-  },
-];
+let sectionsState: SearchCategorySectionDetail[] = [];
 
 function delay(ms = 280) {
   return new Promise((resolve) => setTimeout(resolve, ms));

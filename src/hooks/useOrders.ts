@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { fetchOrders } from "@/lib/orders";
-import type { OrderListTab, OrderRecord, OrdersQuery } from "@/lib/types";
+import type { OrderListTab, OrderRecord } from "@/lib/types";
 
-const DEFAULT_PAGE_SIZE = 8;
+const DEFAULT_PAGE_SIZE = 20;
 
 export type OrderFilters = {
   tab: OrderListTab;
@@ -16,7 +16,6 @@ export type OrderFilters = {
   updatedInLast4Days: "any" | "yes" | "no";
   page: number;
   pageSize?: number;
-  sortDir?: "asc" | "desc";
 };
 
 export function useOrders(filters: OrderFilters) {
@@ -25,11 +24,15 @@ export function useOrders(filters: OrderFilters) {
   const [page, setPage] = useState(filters.page);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
 
   useEffect(() => {
     let cancelled = false;
 
-    const query: OrdersQuery = {
+    setLoading(true);
+    setError(null);
+
+    fetchOrders({
       tab: filters.tab,
       orderId: filters.orderId || undefined,
       vendorId: filters.vendorId || undefined,
@@ -38,14 +41,8 @@ export function useOrders(filters: OrderFilters) {
       orderStatus: filters.orderStatus || undefined,
       updatedInLast4Days: filters.updatedInLast4Days,
       page: filters.page,
-      pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
-      sortDir: filters.sortDir ?? "desc",
-    };
-
-    setLoading(true);
-    setError(null);
-
-    fetchOrders(query)
+      pageSize,
+    })
       .then((response) => {
         if (cancelled) return;
         setItems(response.items);
@@ -71,15 +68,14 @@ export function useOrders(filters: OrderFilters) {
     filters.orderStatus,
     filters.updatedInLast4Days,
     filters.page,
-    filters.pageSize,
-    filters.sortDir,
+    pageSize,
   ]);
 
   return {
     items,
     total,
     page,
-    pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
+    pageSize,
     loading,
     error,
   };

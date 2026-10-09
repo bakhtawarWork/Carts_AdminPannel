@@ -42,7 +42,7 @@ export default function LocationsView() {
         setGroups(items);
       })
       .catch(() => {
-        if (!cancelled) setError("Could not load dummy location data.");
+        if (!cancelled) setError("Could not load locations.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -124,7 +124,7 @@ export default function LocationsView() {
           </p>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
             Select a subarea to view its polygon, then edit vertices on the map.
-            Using dummy data only — live APIs are not called from this page.
+            No locations are loaded — this page is not connected to live data.
           </p>
         </div>
 

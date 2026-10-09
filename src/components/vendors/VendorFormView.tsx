@@ -80,6 +80,7 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
     null,
   );
   const [fieldErrors, setFieldErrors] = useState<VendorFormFieldErrors>({});
+  const [accountingEmailsInput, setAccountingEmailsInput] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +124,7 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
           return;
         }
         setForm(data);
+        setAccountingEmailsInput(null);
       } catch (caught) {
         if (!cancelled) {
           setError(
@@ -310,7 +312,21 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
   }
 
   function setLogo(logo: VendorImageAsset | null) {
-    updateField("logo", logo);
+    setForm((prev) => {
+      const prevLogo = prev.logo;
+      let deletedLogoKeys = prev.deletedLogoKeys ?? [];
+      if (prevLogo?.key && prevLogo.key !== logo?.key) {
+        if (!deletedLogoKeys.includes(prevLogo.key)) {
+          deletedLogoKeys = [...deletedLogoKeys, prevLogo.key];
+        }
+      }
+      return {
+        ...prev,
+        logo,
+        deletedLogoKeys,
+      };
+    });
+    clearFieldError("logo");
   }
 
   function addServiceImages(serviceId: VendorServiceId, files: File[]) {
@@ -348,8 +364,20 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
         URL.revokeObjectURL(removed.url);
       }
 
+      let deletedServiceImageKeys = prev.deletedServiceImageKeys ?? {};
+      if (removed?.key) {
+        const existingKeys = deletedServiceImageKeys[serviceId] ?? [];
+        if (!existingKeys.includes(removed.key)) {
+          deletedServiceImageKeys = {
+            ...deletedServiceImageKeys,
+            [serviceId]: [...existingKeys, removed.key],
+          };
+        }
+      }
+
       return {
         ...prev,
+        deletedServiceImageKeys,
         services: {
           ...prev.services,
           [serviceId]: {
@@ -382,9 +410,7 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
     try {
       const result = await saveVendorForm(form, mode);
       setMessage(result.message);
-      if (!isEdit) {
-        router.replace("/vendors");
-      }
+      router.push("/vendors");
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Could not save vendor.",
@@ -733,15 +759,43 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
                 {activePanel === "business" ? (
                   <div className="space-y-6">
                     <PanelBlock title="Contact Info">
-                      <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <ContactTile
-                          label="Email"
+                          label="Email (Primary)"
                           type="email"
                           value={form.email}
                           onChange={(v) => updateField("email", v)}
                           icon="email"
                           required
                           error={fieldErrors.email}
+                        />
+                        <ContactTile
+                          label="Secondary Email"
+                          type="email"
+                          value={form.secondaryEmail ?? ""}
+                          onChange={(v) => updateField("secondaryEmail", v)}
+                          icon="email"
+                        />
+                        <ContactTile
+                          label="Accounting Emails"
+                          type="text"
+                          placeholder="e.g. acct1@nicecafe.com, acct2@nicecafe.com"
+                          value={
+                            accountingEmailsInput !== null
+                              ? accountingEmailsInput
+                              : (form.accountingEmails?.join(", ") ?? "")
+                          }
+                          onChange={(v) => {
+                            setAccountingEmailsInput(v);
+                            updateField(
+                              "accountingEmails",
+                              v
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean),
+                            );
+                          }}
+                          icon="email"
                         />
                         <ContactTile
                           label="Mobile"
@@ -776,10 +830,57 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
                             updateField("doublePoints", checked)
                           }
                         />
+                        <ToggleField
+                          label="Fully Booked?"
+                          checked={Boolean(form.isFullyBooked)}
+                          onChange={(checked) =>
+                            updateField("isFullyBooked", checked)
+                          }
+                        />
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <TextField
-                          label="Percentage"
+                          label="Percentage (%)"
                           value={form.percentage}
                           onChange={(value) => updateField("percentage", value)}
+                          placeholder="e.g. 12.5"
+                        />
+                        <TextField
+                          label="Display Order"
+                          type="number"
+                          value={form.order !== undefined ? String(form.order) : ""}
+                          onChange={(value) =>
+                            updateField("order", value === "" ? 0 : Number(value))
+                          }
+                          placeholder="e.g. 10"
+                        />
+                        <TextField
+                          label="Min Order Time (Hours)"
+                          type="number"
+                          value={form.minimumOrderTimeInHours ?? ""}
+                          onChange={(value) =>
+                            updateField("minimumOrderTimeInHours", value)
+                          }
+                          placeholder="e.g. 2"
+                        />
+                        <TextField
+                          label="Min Order Amount - Catering (QR)"
+                          type="number"
+                          value={form.minimumOrderAmountCatering ?? ""}
+                          onChange={(value) =>
+                            updateField("minimumOrderAmountCatering", value)
+                          }
+                          placeholder="e.g. 150"
+                        />
+                        <TextField
+                          label="Min Order Amount - Delivery (QR)"
+                          type="number"
+                          value={form.minimumOrderAmountDelivery ?? ""}
+                          onChange={(value) =>
+                            updateField("minimumOrderAmountDelivery", value)
+                          }
+                          placeholder="e.g. 50"
                         />
                       </div>
 
@@ -1403,6 +1504,7 @@ function ContactTile({
   value,
   onChange,
   type = "text",
+  placeholder,
   icon,
   required = false,
   error,
@@ -1411,6 +1513,7 @@ function ContactTile({
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  placeholder?: string;
   icon: "email" | "mobile" | "phone";
   required?: boolean;
   error?: string;
@@ -1433,7 +1536,7 @@ function ContactTile({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="w-full border-0 bg-transparent p-0 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
-        placeholder={`Enter ${label.toLowerCase()}`}
+        placeholder={placeholder || `Enter ${label.toLowerCase()}`}
       />
       {error ? <FieldError message={error} /> : null}
     </label>

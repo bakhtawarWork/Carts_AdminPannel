@@ -288,6 +288,23 @@ export default function OfferingFormView({
               prev ? { ...prev, gallery: updater(prev.gallery) } : prev,
             )
           }
+          onRemoveImage={(removed) => {
+            if (removed.key) {
+              setForm((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      deletedImageKeys: Array.from(
+                        new Set([
+                          ...(prev.deletedImageKeys ?? []),
+                          removed.key!,
+                        ]),
+                      ),
+                    }
+                  : prev,
+              );
+            }
+          }}
         />
       </FormSection>
 
@@ -348,6 +365,17 @@ export default function OfferingFormView({
             checked={form.femaleService}
             onChange={(checked) => updateField("femaleService", checked)}
           />
+          <Field label="Order (display sequence)">
+            <input
+              type="number"
+              min={0}
+              value={form.order ?? 1}
+              onChange={(event) =>
+                updateField("order", Number(event.target.value) || 0)
+              }
+              className={inputClass}
+            />
+          </Field>
 
           <Field label="Minimum qty (starting)">
             <input
@@ -578,11 +606,13 @@ export default function OfferingFormView({
 function OfferingGalleryEditor({
   gallery,
   onGalleryChange,
+  onRemoveImage,
 }: {
   gallery: OfferingGalleryImage[];
   onGalleryChange: (
     updater: (current: OfferingGalleryImage[]) => OfferingGalleryImage[],
   ) => void;
+  onRemoveImage?: (image: OfferingGalleryImage) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -613,7 +643,9 @@ function OfferingGalleryEditor({
           url,
           alt: file.name.replace(/\.[^.]+$/, "") || "Uploaded image",
           name: file.name,
-          type: file.type || "image/png",
+          type: file.type || "image/jpeg",
+          size: file.size,
+          isExisting: false,
         });
       } catch {
         errors.push(`${file.name}: Could not preview this image. Try another file.`);
@@ -633,6 +665,10 @@ function OfferingGalleryEditor({
 
   function removeImage(imageId: string) {
     setUploadError(null);
+    const target = gallery.find((image) => image.id === imageId);
+    if (target && onRemoveImage) {
+      onRemoveImage(target);
+    }
     onGalleryChange((current) =>
       current.filter((image) => image.id !== imageId),
     );

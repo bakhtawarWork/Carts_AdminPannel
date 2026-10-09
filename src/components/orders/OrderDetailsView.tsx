@@ -147,23 +147,22 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
 
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <DetailCard title="Customer address">
-          <InfoRow
-            label="Area"
-            value={`(${order.address.zoneEnglish} / ${order.address.zoneArabic}) ${order.address.areaEnglish} / ${order.address.areaArabic}`}
-          />
+          <InfoRow label="Area" value={formatAreaLabel(order.address)} />
           <InfoRow label="Street" value={order.address.street || "—"} />
           <InfoRow label="Building" value={order.address.building || "—"} />
           <InfoRow label="Floor" value={order.address.floor || "—"} />
           <InfoRow label="Apartment" value={order.address.apartment || "—"} />
-          <InfoRow label="Mobile" value={order.address.mobile} />
-          <a
-            href={order.address.mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
-          >
-            Open in Maps
-          </a>
+          <InfoRow label="Mobile" value={order.address.mobile || "—"} />
+          {order.address.mapsUrl ? (
+            <a
+              href={order.address.mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
+            >
+              Open in Maps
+            </a>
+          ) : null}
         </DetailCard>
 
         <DetailCard title="Customer">
@@ -322,6 +321,18 @@ function CancellationRequestCard({
       </div>
     </article>
   );
+}
+
+function formatAreaLabel(address: OrderDetail["address"]) {
+  const area = [address.areaEnglish, address.areaArabic]
+    .filter(Boolean)
+    .join(" / ");
+  const zone = [address.zoneEnglish, address.zoneArabic]
+    .filter(Boolean)
+    .join(" / ");
+
+  if (zone && area) return `(${zone}) ${area}`;
+  return area || zone || "—";
 }
 
 function BackLink() {

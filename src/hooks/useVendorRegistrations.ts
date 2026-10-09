@@ -2,23 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { fetchVendorRegistrations } from "@/lib/vendor-registrations";
-import type {
-  VendorRegistrationCategory,
-  VendorRegistrationRecord,
-  VendorRegistrationsQuery,
-} from "@/lib/types";
+import type { VendorRegistrationRecord } from "@/lib/types";
 
-const DEFAULT_PAGE_SIZE = 8;
+const DEFAULT_PAGE_SIZE = 20;
 
 export type VendorRegistrationFilters = {
-  company: string;
-  category: VendorRegistrationCategory | "";
-  licensed: "all" | "yes" | "no";
-  createdFrom: string;
-  createdTo: string;
   page: number;
   pageSize?: number;
-  sortDir: "asc" | "desc";
 };
 
 export function useVendorRegistrations(filters: VendorRegistrationFilters) {
@@ -27,25 +17,18 @@ export function useVendorRegistrations(filters: VendorRegistrationFilters) {
   const [page, setPage] = useState(filters.page);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
 
   useEffect(() => {
     let cancelled = false;
 
-    const query: VendorRegistrationsQuery = {
-      company: filters.company || undefined,
-      category: filters.category || undefined,
-      licensed: filters.licensed,
-      createdFrom: filters.createdFrom || undefined,
-      createdTo: filters.createdTo || undefined,
-      page: filters.page,
-      pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
-      sortDir: filters.sortDir,
-    };
-
     setLoading(true);
     setError(null);
 
-    fetchVendorRegistrations(query)
+    fetchVendorRegistrations({
+      page: filters.page,
+      pageSize,
+    })
       .then((response) => {
         if (cancelled) return;
         setItems(response.items);
@@ -62,22 +45,13 @@ export function useVendorRegistrations(filters: VendorRegistrationFilters) {
     return () => {
       cancelled = true;
     };
-  }, [
-    filters.company,
-    filters.category,
-    filters.licensed,
-    filters.createdFrom,
-    filters.createdTo,
-    filters.page,
-    filters.pageSize,
-    filters.sortDir,
-  ]);
+  }, [filters.page, pageSize]);
 
   return {
     items,
     total,
     page,
-    pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
+    pageSize,
     loading,
     error,
   };

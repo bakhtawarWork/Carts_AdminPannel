@@ -4,40 +4,14 @@ import { getVendorPolicy } from "@/services/vendors";
 export const POLICY_CHAR_LIMIT = 20000;
 
 let policyState: PolicyDocument = {
-  englishContent: "Please be advised",
-  arabicContent: "يرجى العلم",
-  status: "published",
-  updatedAt: "2026-02-04T10:30:00.000Z",
-  updatedBy: "Khalid",
+  englishContent: "",
+  arabicContent: "",
+  status: "draft",
+  updatedAt: "",
+  updatedBy: "",
 };
 
-let policyVersionsState: PolicyVersion[] = [
-  {
-    id: "pv-3",
-    updatedAt: "2026-02-04T10:30:00.000Z",
-    updatedBy: "Khalid",
-    status: "published",
-    englishPreview: "Please be advised",
-    arabicPreview: "يرجى العلم",
-  },
-  {
-    id: "pv-2",
-    updatedAt: "2026-01-12T14:15:00.000Z",
-    updatedBy: "Admin",
-    status: "published",
-    englishPreview:
-      "Please be advised that all vendors must comply with platform guidelines.",
-    arabicPreview: "يرجى العلم بأن جميع البائعين يجب أن يلتزموا بإرشادات المنصة.",
-  },
-  {
-    id: "pv-1",
-    updatedAt: "2025-11-08T09:00:00.000Z",
-    updatedBy: "Admin",
-    status: "draft",
-    englishPreview: "Draft vendor policy — pending review.",
-    arabicPreview: "مسودة سياسة البائعين — بانتظار المراجعة.",
-  },
-];
+let policyVersionsState: PolicyVersion[] = [];
 
 function delay(ms = 220) {
   return new Promise((resolve) => setTimeout(resolve, ms));

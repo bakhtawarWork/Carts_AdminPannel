@@ -5,58 +5,18 @@ import type {
   VendorUserRecord,
   VendorUsersResponse,
 } from "@/lib/types";
+import { ApiError } from "@/services/api";
 import {
+  createVendorUserRequest,
+  getVendorUserById,
   getVendorUsers,
+  updateVendorUserRequest,
+  type CreateVendorUserPayload,
+  type UpdateVendorUserPayload,
   type VendorUserApiItem,
 } from "@/services/vendors";
 
-let vendorUsersState: VendorUserRecord[] = [
-  {
-    id: "vu-1",
-    vendorId: "vnd-16",
-    name: "Creams Sweets Cafe",
-    email: "hamid.alzamel@creams-sweets.com",
-    mobile: "+97460001523",
-    blocked: false,
-    createdAt: "2024-02-10T09:00:00.000Z",
-  },
-  {
-    id: "vu-2",
-    vendorId: "vnd-6",
-    name: "Sable Sweets Manager",
-    email: "manager@sablesweets.qa",
-    mobile: "+97455112233",
-    blocked: false,
-    createdAt: "2024-06-18T11:30:00.000Z",
-  },
-  {
-    id: "vu-3",
-    vendorId: "vnd-2",
-    name: "Melenzane Admin",
-    email: "admin@melenzane.qa",
-    mobile: "+97433445566",
-    blocked: false,
-    createdAt: "2024-03-15T08:45:00.000Z",
-  },
-  {
-    id: "vu-4",
-    vendorId: "vnd-2",
-    name: "Kitchen Lead",
-    email: "kitchen@melenzane.qa",
-    mobile: "+97477889900",
-    blocked: true,
-    createdAt: "2025-01-20T14:20:00.000Z",
-  },
-  {
-    id: "vu-5",
-    vendorId: "vnd-4",
-    name: "My Fair Sweets Owner",
-    email: "owner@myfairsweets.com",
-    mobile: "+97466778899",
-    blocked: false,
-    createdAt: "2023-12-01T10:00:00.000Z",
-  },
-];
+let vendorUsersState: VendorUserRecord[] = [];
 
 function delay(ms = 220) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -68,11 +28,23 @@ function createUserId() {
 
 function normalizeForm(input: VendorUserFormData) {
   return {
-    name: input.name.trim(),
-    email: input.email.trim(),
-    mobile: input.mobile.trim(),
-    password: input.password,
+    name: (input.name || "").trim(),
+    email: (input.email || "").trim(),
+    mobile: (input.mobile || "").trim(),
+    password: (input.password || "").trim(),
+    preferredLanguage: input.preferredLanguage?.trim() || undefined,
+    gender: input.gender?.trim() || undefined,
+    isBlocked: Boolean(input.isBlocked),
   };
+}
+
+function resolveVendorId(
+  value: VendorUserApiItem["_vendor"],
+  fallbackVendorId: string,
+) {
+  if (!value) return fallbackVendorId;
+  if (typeof value === "string") return value.trim() || fallbackVendorId;
+  return value._id?.trim() || value.id?.trim() || fallbackVendorId;
 }
 
 function mapVendorUser(
@@ -84,13 +56,37 @@ function mapVendorUser(
 
   return {
     id,
-    vendorId: item._vendor || vendorId,
+    vendorId: resolveVendorId(item._vendor, vendorId),
     name: item.name?.trim() || "—",
     email: item.email?.trim() || "—",
     mobile: item.mobile?.trim() || "—",
+    preferredLanguage: item.preferredLanguage?.trim() || "en",
     blocked: Boolean(item.isBlocked),
     createdAt: item.createdAt ?? "",
   };
+}
+
+export function vendorUserFormFromRecord(
+  record: VendorUserRecord,
+): VendorUserFormData {
+  return {
+    name: record.name === "—" ? "" : record.name,
+    email: record.email === "—" ? "" : record.email,
+    mobile: record.mobile === "—" ? "" : record.mobile,
+    password: "",
+    preferredLanguage: record.preferredLanguage || "en",
+    isBlocked: record.blocked,
+  };
+}
+
+export function getVendorUserSaveErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.message.trim()) {
+    return error.message;
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Could not save vendor user. Please try again.";
 }
 
 function vendorForUsers(vendorId: string): VendorRecord {
@@ -124,73 +120,111 @@ export async function fetchVendorUsers(
   };
 }
 
-/** Swap for a real API call when available. */
+/** GET /admin/vendors/users/:userId — used when opening the edit popup. */
+export async function fetchVendorUserById(
+  userId: string,
+  vendorId: string,
+): Promise<VendorUserRecord> {
+  const item = await getVendorUserById(userId);
+  const record = mapVendorUser(item, vendorId);
+  if (!record) {
+    throw new Error("Vendor user not found.");
+  }
+  return record;
+}
+
+/** POST /vendors/users */
 export async function createVendorUser(
   vendorId: string,
   input: VendorUserFormData,
 ) {
-  await delay(240);
   const values = normalizeForm(input);
   if (!values.name || !values.email || !values.mobile || !values.password) {
     throw new Error("All fields are required.");
   }
 
-  const record: VendorUserRecord = {
-    id: createUserId(),
+  const payload: CreateVendorUserPayload = {
     vendorId,
     name: values.name,
     email: values.email,
     mobile: values.mobile,
-    blocked: false,
-    createdAt: new Date().toISOString(),
+    password: values.password,
   };
-  vendorUsersState = [record, ...vendorUsersState];
-  return { ...record };
+
+  if (values.preferredLanguage) {
+    payload.preferredLanguage = values.preferredLanguage;
+  }
+  if (values.gender) {
+    payload.gender = values.gender;
+  }
+
+  return createVendorUserRequest(payload);
 }
 
-/** Swap for a real API call when available. */
+/** PATCH /admin/vendors/users/:userId */
 export async function updateVendorUser(
   vendorId: string,
   userId: string,
   input: VendorUserFormData,
 ) {
-  await delay(220);
   const values = normalizeForm(input);
   if (!values.name || !values.email || !values.mobile) {
     throw new Error("Name, email, and mobile are required.");
   }
 
-  const index = vendorUsersState.findIndex(
-    (user) => user.id === userId && user.vendorId === vendorId,
-  );
-  if (index === -1) return null;
-
-  vendorUsersState[index] = {
-    ...vendorUsersState[index],
+  const payload: UpdateVendorUserPayload = {
     name: values.name,
     email: values.email,
     mobile: values.mobile,
+    password: values.password,
+    isBlocked: values.isBlocked,
   };
-  return { ...vendorUsersState[index] };
+
+  if (values.preferredLanguage) {
+    payload.preferredLanguage = values.preferredLanguage;
+  }
+
+  const result = await updateVendorUserRequest(userId, payload);
+
+  const record = mapVendorUser(result.user, vendorId);
+  if (!record) {
+    throw new Error(result.message);
+  }
+
+  return {
+    ...record,
+    message: result.message,
+  };
 }
 
-/** Swap for a real API call when available. */
+/** Update vendor user blocked status via API */
 export async function setVendorUserBlocked(
   vendorId: string,
   userId: string,
   blocked: boolean,
+  user?: Partial<VendorUserRecord>,
 ) {
-  await delay(180);
-  const index = vendorUsersState.findIndex(
-    (user) => user.id === userId && user.vendorId === vendorId,
-  );
-  if (index === -1) return null;
-
-  vendorUsersState[index] = {
-    ...vendorUsersState[index],
-    blocked,
+  const payload: UpdateVendorUserPayload = {
+    isBlocked: blocked,
   };
-  return { ...vendorUsersState[index] };
+
+  if (user?.name && user.name !== "—") {
+    payload.name = user.name;
+  }
+  if (user?.email && user.email !== "—") {
+    payload.email = user.email;
+  }
+  if (user?.mobile && user.mobile !== "—") {
+    payload.mobile = user.mobile;
+  }
+
+  const result = await updateVendorUserRequest(userId, payload);
+  const record = mapVendorUser(result.user, vendorId);
+
+  return {
+    record,
+    message: result.message,
+  };
 }
 
 export function userInitials(name: string) {

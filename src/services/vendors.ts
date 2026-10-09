@@ -216,14 +216,27 @@ async function postVendor(
   };
 }
 
+export type VendorUserVendorApi = {
+  _id?: string;
+  id?: string;
+  name?: { en?: string; ar?: string };
+  logo?: {
+    key?: string;
+    url?: string;
+    cdnUrl?: string;
+  };
+};
+
 export type VendorUserApiItem = {
   _id?: string;
   id?: string;
   preferredLanguage?: string;
+  gender?: string;
   smsVerified?: boolean;
   isBlocked?: boolean;
   role?: string;
-  _vendor?: string;
+  /** List may send vendor id string; details may send populated vendor object. */
+  _vendor?: string | VendorUserVendorApi;
   name?: string;
   email?: string;
   mobile?: string;
@@ -236,6 +249,14 @@ export type VendorUsersApiResponse = {
   message?: string;
   data?: {
     users?: VendorUserApiItem[];
+  };
+};
+
+export type VendorUserDetailsApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    user?: VendorUserApiItem;
   };
 };
 
@@ -257,13 +278,173 @@ export async function getVendorUsers(vendorId: string) {
   return payload.data?.users ?? [];
 }
 
+/** GET /admin/vendors/users/:userId */
+export async function getVendorUserById(userId: string) {
+  const payload = await api.get<VendorUserDetailsApiResponse>(
+    `${VENDOR_ENDPOINTS.users}/${encodeURIComponent(userId)}`,
+  );
+
+  if (payload?.status === false) {
+    throw new ApiError(
+      payload.message ?? "Could not load vendor user.",
+      400,
+      payload,
+    );
+  }
+
+  const user = payload.data?.user;
+  if (!user) {
+    throw new ApiError(
+      payload.message ?? "Vendor user not found.",
+      404,
+      payload,
+    );
+  }
+
+  return user;
+}
+
+export type CreateVendorUserPayload = {
+  vendorId: string;
+  name: string;
+  email: string;
+  mobile: string;
+  password: string;
+  preferredLanguage?: string;
+  gender?: string;
+};
+
+export type CreateVendorUserApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    user?: VendorUserApiItem;
+  };
+};
+
+/** POST /vendors/users */
+export async function createVendorUserRequest(
+  payload: CreateVendorUserPayload,
+) {
+  const response = await api.post<CreateVendorUserApiResponse>(
+    VENDOR_ENDPOINTS.users,
+    payload,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not create vendor user.",
+      400,
+      response,
+    );
+  }
+
+  const user = response.data?.user;
+  if (!user) {
+    throw new ApiError(
+      response.message ?? "Vendor user created but no user data returned.",
+      200,
+      response,
+    );
+  }
+
+  return {
+    message: response.message?.trim() || "Vendor user created successfully",
+    user,
+  };
+}
+
+export type UpdateVendorUserPayload = {
+  name?: string;
+  email?: string;
+  mobile?: string;
+  password?: string;
+  preferredLanguage?: string;
+  isBlocked: boolean;
+};
+
+export type UpdateVendorUserApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    user?: VendorUserApiItem;
+  };
+};
+
+/** PUT /admin/vendors/users/:userId (with PATCH fallback) */
+export async function updateVendorUserRequest(
+  userId: string,
+  payload: UpdateVendorUserPayload,
+) {
+  try {
+    const response = await api.put<UpdateVendorUserApiResponse>(
+      `${VENDOR_ENDPOINTS.users}/${encodeURIComponent(userId)}`,
+      payload,
+    );
+
+    if (response?.status === false) {
+      throw new ApiError(
+        response.message ?? "Could not update vendor user.",
+        400,
+        response,
+      );
+    }
+
+    const user = response.data?.user;
+    if (!user) {
+      throw new ApiError(
+        response.message ?? "Could not update vendor user.",
+        400,
+        response,
+      );
+    }
+
+    return {
+      message: response.message?.trim() || "Vendor user updated successfully",
+      user,
+    };
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+      const response = await api.patch<UpdateVendorUserApiResponse>(
+        `${VENDOR_ENDPOINTS.users}/${encodeURIComponent(userId)}`,
+        payload,
+      );
+
+      if (response?.status === false) {
+        throw new ApiError(
+          response.message ?? "Could not update vendor user.",
+          400,
+          response,
+        );
+      }
+
+      const user = response.data?.user;
+      if (!user) {
+        throw new ApiError(
+          response.message ?? "Could not update vendor user.",
+          400,
+          response,
+        );
+      }
+
+      return {
+        message: response.message?.trim() || "Vendor user updated successfully",
+        user,
+      };
+    }
+    throw err;
+  }
+}
+
 export type VendorDetailImageApiItem = {
   _id?: string;
   id?: string;
+  key?: string;
   name?: string;
   title?: string;
   alt?: string;
   url?: string;
+  cdnUrl?: string;
   src?: string;
   path?: string;
   value?: string;
@@ -293,10 +474,15 @@ export type VendorDetailApiItem = {
   shortDescription?: { en?: string; ar?: string };
   contactInfo?: {
     primaryEmail?: string;
+    secondaryEmail?: string;
+    accountingEmails?: string[];
     mobile?: string;
     phone?: string;
   };
   vendorImages?: VendorDetailServiceMap<
+    Array<VendorDetailImageApiItem | string> | null
+  >;
+  vendorimages?: VendorDetailServiceMap<
     Array<VendorDetailImageApiItem | string> | null
   >;
   images?: Array<VendorDetailImageApiItem | string> | null;
@@ -308,6 +494,12 @@ export type VendorDetailApiItem = {
   doublePointReward?: boolean;
   percentage?: number | string | null;
   deliveryAreasAndCost?: VendorDetailServiceMap<VendorDetailAreaApiItem[] | null>;
+  order?: number | null;
+  isFullyBooked?: boolean;
+  minimumOrderAmountCatering?: number | string | null;
+  minimumOrderAmountDelivery?: number | string | null;
+  minimumOrderTimeInHours?: number | string | null;
+  collectionIds?: string[] | Array<{ _id?: string }> | null;
 };
 
 export type VendorDetailApiResponse = {
@@ -332,6 +524,127 @@ export async function getVendorDetails(vendorId: string) {
   }
 
   return payload.data;
+}
+
+export type UpdateVendorImageUpload = {
+  name: string;
+  size: number;
+  type: string;
+  value: string;
+};
+
+export type UpdateVendorDeletedImage = {
+  key: string;
+};
+
+export type UpdateVendorServiceImages = {
+  deletedImages?: UpdateVendorDeletedImage[];
+  newImages?: UpdateVendorImageUpload[];
+};
+
+export type UpdateVendorAreaCost = {
+  areaId: string;
+  fees: number;
+};
+
+export type UpdateVendorServiceMap<T> = {
+  catering: T;
+  delivery: T;
+  setups: T;
+  hospitality: T;
+  feasts: T;
+};
+
+export type UpdateVendorContactInfo = {
+  primaryEmail: string;
+  secondaryEmail: string;
+  accountingEmails: string[];
+  mobile: string;
+  phone: string;
+};
+
+export type UpdateVendorPayload = {
+  name: { en: string; ar: string };
+  tagline: { en: string; ar: string };
+  shortDescription: { en: string; ar: string };
+  published: boolean;
+  percentage: number;
+  order: number;
+  isFullyBooked: boolean;
+  doublePointReward: boolean;
+  serviceCategories: string[];
+  deliveryAreasAndCost: UpdateVendorServiceMap<UpdateVendorAreaCost[]>;
+  minimumNotice: UpdateVendorServiceMap<number | null>;
+  capacity: UpdateVendorServiceMap<number | null>;
+  minimumOrderAmountCatering: number;
+  minimumOrderAmountDelivery: number;
+  minimumOrderTimeInHours: number;
+  contactInfo: UpdateVendorContactInfo;
+  collectionIds: string[];
+  vendorimages: Partial<Record<string, UpdateVendorServiceImages>>;
+  logoImg?: {
+    deletedImages?: UpdateVendorDeletedImage[];
+    newImages?: UpdateVendorImageUpload[];
+  };
+};
+
+export type UpdateVendorApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: unknown;
+};
+
+/** PUT /vendors/:id */
+export async function updateVendor(id: string, payload: UpdateVendorPayload) {
+  const response = await api.put<UpdateVendorApiResponse>(
+    `${VENDOR_ENDPOINTS.list}/${encodeURIComponent(id)}`,
+    payload,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not update vendor.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    id,
+    message: response.message?.trim() || "Vendor updated successfully",
+    data: response.data,
+  };
+}
+
+export type DeleteVendorApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    _id?: string;
+    id?: string;
+    deleted?: boolean;
+  };
+};
+
+/** DELETE /vendors/:id */
+export async function deleteVendor(id: string) {
+  const response = await api.delete<DeleteVendorApiResponse>(
+    `${VENDOR_ENDPOINTS.list}/${encodeURIComponent(id)}`,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not delete vendor.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    id: response.data?._id ?? response.data?.id ?? id,
+    message: response.message?.trim() || "Vendor deleted successfully",
+    data: response.data,
+  };
 }
 
 export type VendorPolicyApiItem = {
@@ -454,41 +767,19 @@ export type VendorRegistrationsApiResponse = {
 export type VendorRegistrationListQueryParams = {
   page: number;
   limit: number;
-  businessName?: string;
-  category?: string;
-  licensed?: "Yes" | "No";
-  createdFrom?: string;
-  createdTo?: string;
-  sortDir?: "asc" | "desc";
 };
 
 function toVendorRegistrationSearch(query: VendorRegistrationListQueryParams) {
   const params = new URLSearchParams();
   params.set("page", String(Math.max(1, query.page)));
   params.set("limit", String(Math.max(1, query.limit)));
-
-  if (query.businessName) params.set("businessName", query.businessName);
-  if (query.category) params.set("category", query.category);
-  if (query.licensed) params.set("licensed", query.licensed);
-  if (query.createdFrom) params.set("createdFrom", query.createdFrom);
-  if (query.createdTo) params.set("createdTo", query.createdTo);
-  if (query.sortDir) params.set("sortDir", query.sortDir);
-
   return params.toString();
 }
 
-/** GET vendor registrations. Path is filled in on VENDOR_ENDPOINTS.registrations. */
+/** GET /admin/vendors/registrations */
 export async function getVendorRegistrations(
   query: VendorRegistrationListQueryParams,
 ) {
-  if (!VENDOR_ENDPOINTS.registrations) {
-    throw new ApiError(
-      "Vendor registrations endpoint is not configured yet.",
-      0,
-      null,
-    );
-  }
-
   const payload = await api.get<VendorRegistrationsApiResponse>(
     `${VENDOR_ENDPOINTS.registrations}?${toVendorRegistrationSearch(query)}`,
   );

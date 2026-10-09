@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchVendors } from "@/lib/vendors";
 import type { VendorListTab, VendorRecord, VendorsQuery } from "@/lib/types";
 
@@ -24,6 +24,11 @@ export function useVendors(filters: VendorFilters) {
   const [page, setPage] = useState(filters.page);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const refresh = useCallback(() => {
+    setReloadKey((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +79,7 @@ export function useVendors(filters: VendorFilters) {
     filters.updatedTo,
     filters.page,
     filters.pageSize,
+    reloadKey,
   ]);
 
   return {
@@ -83,5 +89,6 @@ export function useVendors(filters: VendorFilters) {
     pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
     loading,
     error,
+    refresh,
   };
 }

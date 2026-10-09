@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchPromoCodes } from "@/lib/promo-codes";
 import type { PromoCodeListTab, PromoCodeRecord, PromoCodesQuery } from "@/lib/types";
 
@@ -18,18 +18,35 @@ export function usePromoCodes(filters: PromoCodeFilters) {
   const [page, setPage] = useState(filters.page);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const loadedTabRef = useRef<PromoCodeListTab | null>(null);
+  const reloadKeyRef = useRef(0);
+
+  const refresh = useCallback(() => {
+    setReloadKey((key) => key + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
+    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
     const query: PromoCodesQuery = {
       tab: filters.tab,
       page: filters.page,
-      pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
+      pageSize,
     };
 
-    setLoading(true);
+    const tabChanged = loadedTabRef.current !== filters.tab;
+    if (tabChanged) loadedTabRef.current = filters.tab;
+
+    const isExplicitRefresh = reloadKey !== reloadKeyRef.current;
+    reloadKeyRef.current = reloadKey;
+
     setError(null);
+    if (tabChanged || isExplicitRefresh) {
+      setLoading(true);
+    }
 
     fetchPromoCodes(query)
       .then((response) => {
@@ -48,7 +65,7 @@ export function usePromoCodes(filters: PromoCodeFilters) {
     return () => {
       cancelled = true;
     };
-  }, [filters.tab, filters.page, filters.pageSize]);
+  }, [filters.tab, filters.page, filters.pageSize, reloadKey]);
 
   return {
     items,
@@ -57,5 +74,6 @@ export function usePromoCodes(filters: PromoCodeFilters) {
     pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
     loading,
     error,
+    refresh,
   };
 }

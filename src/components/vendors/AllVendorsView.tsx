@@ -5,7 +5,7 @@ import Link from "next/link";
 import { PaginationBar } from "@/components/ui/PaginationBar";
 import { PublishedStatusInline } from "@/components/ui/PublishedStatus";
 import { useVendors } from "@/hooks/useVendors";
-import { formatVendorDate } from "@/lib/vendors";
+import { formatVendorDate, removeVendor } from "@/lib/vendors";
 import type { VendorListTab, VendorRecord } from "@/lib/types";
 
 const PAGE_SIZE = 8;
@@ -31,6 +31,10 @@ export default function AllVendorsView() {
   const [updatedFrom, setUpdatedFrom] = useState("");
   const [updatedTo, setUpdatedTo] = useState("");
   const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<VendorRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -40,7 +44,7 @@ export default function AllVendorsView() {
     return () => window.clearTimeout(timer);
   }, [name]);
 
-  const { items, total, loading, error } = useVendors({
+  const { items, total, loading, error, refresh } = useVendors({
     tab,
     published,
     name: debouncedName,
@@ -51,6 +55,25 @@ export default function AllVendorsView() {
     page,
     pageSize: PAGE_SIZE,
   });
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const response = await removeVendor(deleteTarget.id);
+      setActionSuccess(response.message || "Vendor deleted successfully");
+      setDeleteTarget(null);
+      refresh();
+    } catch (caught) {
+      setActionError(
+        caught instanceof Error ? caught.message : "Could not delete vendor.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function resetFilters() {
     setPublished(EMPTY_FILTERS.published);
@@ -79,6 +102,32 @@ export default function AllVendorsView() {
 
   return (
     <div className="space-y-5">
+      {actionSuccess ? (
+        <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <span>{actionSuccess}</span>
+          <button
+            type="button"
+            onClick={() => setActionSuccess(null)}
+            className="text-xs font-semibold text-emerald-700 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-xs font-semibold text-red-600 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
           <TabButton
@@ -232,7 +281,11 @@ export default function AllVendorsView() {
                       </tr>
                     ) : (
                       items.map((vendor) => (
-                        <DraftVendorRow key={vendor.id} vendor={vendor} />
+                        <DraftVendorRow
+                          key={vendor.id}
+                          vendor={vendor}
+                          onDelete={setDeleteTarget}
+                        />
                       ))
                     )}
                   </tbody>
@@ -266,7 +319,11 @@ export default function AllVendorsView() {
                       </tr>
                     ) : (
                       items.map((vendor) => (
-                        <VendorRow key={vendor.id} vendor={vendor} />
+                        <VendorRow
+                          key={vendor.id}
+                          vendor={vendor}
+                          onDelete={setDeleteTarget}
+                        />
                       ))
                     )}
                   </tbody>
@@ -283,11 +340,19 @@ export default function AllVendorsView() {
                 </p>
               ) : isDraftTab ? (
                 items.map((vendor) => (
-                  <DraftVendorCard key={vendor.id} vendor={vendor} />
+                  <DraftVendorCard
+                    key={vendor.id}
+                    vendor={vendor}
+                    onDelete={setDeleteTarget}
+                  />
                 ))
               ) : (
                 items.map((vendor) => (
-                  <VendorCard key={vendor.id} vendor={vendor} />
+                  <VendorCard
+                    key={vendor.id}
+                    vendor={vendor}
+                    onDelete={setDeleteTarget}
+                  />
                 ))
               )}
             </div>
@@ -301,6 +366,20 @@ export default function AllVendorsView() {
           onPageChange={setPage}
         />
       </div>
+
+      {deleteTarget ? (
+        <ConfirmDeleteModal
+          title={`Delete ${isDraftTab ? "draft " : ""}vendor`}
+          message={`Are you sure you want to delete "${
+            deleteTarget.englishName || deleteTarget.arabicName || "this vendor"
+          }"? This action cannot be undone.`}
+          busy={deleting}
+          onCancel={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+          onConfirm={() => void handleConfirmDelete()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -375,7 +454,13 @@ function DateRangeField({
   );
 }
 
-function VendorRow({ vendor }: { vendor: VendorRecord }) {
+function VendorRow({
+  vendor,
+  onDelete,
+}: {
+  vendor: VendorRecord;
+  onDelete: (vendor: VendorRecord) => void;
+}) {
   return (
     <tr className="align-middle hover:bg-slate-50/70">
       <td className="px-4 py-4">
@@ -394,13 +479,19 @@ function VendorRow({ vendor }: { vendor: VendorRecord }) {
         {formatVendorDate(vendor.updatedAt)}
       </td>
       <td className="px-4 py-4">
-        <VendorActions vendorId={vendor.id} />
+        <VendorActions vendor={vendor} onDelete={onDelete} />
       </td>
     </tr>
   );
 }
 
-function DraftVendorRow({ vendor }: { vendor: VendorRecord }) {
+function DraftVendorRow({
+  vendor,
+  onDelete,
+}: {
+  vendor: VendorRecord;
+  onDelete: (vendor: VendorRecord) => void;
+}) {
   return (
     <tr className="align-middle hover:bg-slate-50/70">
       <td className="px-4 py-4 font-medium text-slate-900">
@@ -416,13 +507,19 @@ function DraftVendorRow({ vendor }: { vendor: VendorRecord }) {
         {formatVendorDate(vendor.updatedAt)}
       </td>
       <td className="px-4 py-4">
-        <DraftActions vendorId={vendor.id} />
+        <DraftActions vendor={vendor} onDelete={onDelete} />
       </td>
     </tr>
   );
 }
 
-function VendorCard({ vendor }: { vendor: VendorRecord }) {
+function VendorCard({
+  vendor,
+  onDelete,
+}: {
+  vendor: VendorRecord;
+  onDelete: (vendor: VendorRecord) => void;
+}) {
   return (
     <article className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -445,13 +542,19 @@ function VendorCard({ vendor }: { vendor: VendorRecord }) {
         </div>
       </dl>
       <div className="mt-4">
-        <VendorActions vendorId={vendor.id} />
+        <VendorActions vendor={vendor} onDelete={onDelete} />
       </div>
     </article>
   );
 }
 
-function DraftVendorCard({ vendor }: { vendor: VendorRecord }) {
+function DraftVendorCard({
+  vendor,
+  onDelete,
+}: {
+  vendor: VendorRecord;
+  onDelete: (vendor: VendorRecord) => void;
+}) {
   return (
     <article className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
       <div>
@@ -471,18 +574,24 @@ function DraftVendorCard({ vendor }: { vendor: VendorRecord }) {
         </div>
       </dl>
       <div className="mt-4">
-        <DraftActions vendorId={vendor.id} />
+        <DraftActions vendor={vendor} onDelete={onDelete} />
       </div>
     </article>
   );
 }
 
-function VendorActions({ vendorId }: { vendorId: string }) {
+function VendorActions({
+  vendor,
+  onDelete,
+}: {
+  vendor: VendorRecord;
+  onDelete: (vendor: VendorRecord) => void;
+}) {
   const quickActions = [
-    { label: "Offerings", href: `/vendors/${vendorId}/offerings` },
-    { label: "Users", href: `/vendors/${vendorId}/users` },
-    { label: "Filters", href: `/vendors/${vendorId}/filters` },
-    { label: "Reviews", href: `/vendors/${vendorId}/reviews` },
+    { label: "Offerings", href: `/vendors/${vendor.id}/offerings` },
+    { label: "Users", href: `/vendors/${vendor.id}/users` },
+    { label: "Filters", href: `/vendors/${vendor.id}/filters` },
+    { label: "Reviews", href: `/vendors/${vendor.id}/reviews` },
   ] as const;
 
   return (
@@ -505,7 +614,7 @@ function VendorActions({ vendorId }: { vendorId: string }) {
 
       <div className="flex flex-wrap items-center gap-1.5">
         <Link
-          href={`/vendors/${vendorId}/edit`}
+          href={`/vendors/${vendor.id}/edit`}
           className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
         >
           <EditIcon />
@@ -513,6 +622,7 @@ function VendorActions({ vendorId }: { vendorId: string }) {
         </Link>
         <button
           type="button"
+          onClick={() => onDelete(vendor)}
           aria-label="Delete vendor"
           className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100"
         >
@@ -524,11 +634,17 @@ function VendorActions({ vendorId }: { vendorId: string }) {
   );
 }
 
-function DraftActions({ vendorId }: { vendorId: string }) {
+function DraftActions({
+  vendor,
+  onDelete,
+}: {
+  vendor: VendorRecord;
+  onDelete: (vendor: VendorRecord) => void;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Link
-        href={`/vendors/${vendorId}/edit`}
+        href={`/vendors/${vendor.id}/edit`}
         className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
       >
         <EditIcon />
@@ -536,6 +652,7 @@ function DraftActions({ vendorId }: { vendorId: string }) {
       </Link>
       <button
         type="button"
+        onClick={() => onDelete(vendor)}
         aria-label="Delete draft vendor"
         className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100"
       >
@@ -589,5 +706,57 @@ function DeleteIcon() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+function ConfirmDeleteModal({
+  title,
+  message,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close dialog"
+        disabled={busy}
+        onClick={onCancel}
+        className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px]"
+      />
+      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        </div>
+        <p className="px-5 py-4 text-sm leading-relaxed text-slate-600">
+          {message}
+        </p>
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/80 px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

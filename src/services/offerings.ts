@@ -144,9 +144,11 @@ export type OfferingDetailNamedItem = {
 
 export type OfferingDetailImage = {
   _id?: string;
+  key?: string;
   url?: string;
   cdnUrl?: string;
   filename?: string;
+  alt?: string;
 };
 
 export type OfferingDetailApiItem = {
@@ -168,6 +170,9 @@ export type OfferingDetailApiItem = {
   femaleServiceAvailable?: boolean;
   serviceAvailability?: number | string | null;
   serviceAvailabilitySharedCode?: number | string | null;
+  order?: number | string | null;
+  approveStatus?: string | null;
+  collectionIds?: string[] | Array<{ _id?: string }> | null;
   requiredOptions?: Array<{
     _id?: string;
     name?: OfferingDetailName;
@@ -342,6 +347,7 @@ export type CreateOfferingImagePayload = {
   name: string;
   type: string;
   value: string;
+  size?: number;
 };
 
 export type CreateOfferingPayload = {
@@ -410,6 +416,90 @@ export async function createOffering(payload: CreateOfferingPayload) {
   };
 }
 
+export type UpdateOfferingExistingImage = {
+  url: string;
+  cdnUrl: string;
+  key: string;
+  filename: string;
+  alt: string;
+};
+
+export type UpdateOfferingImageUpload = {
+  name: string;
+  type: string;
+  size: number;
+  value: string;
+};
+
+export type UpdateOfferingPayload = {
+  name: {
+    en: string;
+    ar: string;
+  };
+  shortDescription: {
+    en: string;
+    ar: string;
+  };
+  serviceCategory: string;
+  categoryId: string;
+  vendorId: string;
+  price: number;
+  minimumQuantity: number;
+  maxQuantity: number;
+  startingPrice: number;
+  minimumNotice: number;
+  setupTimeInHours: number;
+  maxTimeInHours: number;
+  published: boolean;
+  femaleServiceAvailable: boolean;
+  order: number;
+  approveStatus: string;
+  enoughFor: {
+    en: string;
+    ar: string;
+  };
+  requiredOptions: CreateOfferingRequiredOption[];
+  addOns: CreateOfferingAddOnGroup[];
+  food: CreateOfferingNamedItem[];
+  requirements: CreateOfferingNamedItem[];
+  notes: CreateOfferingNamedItem[];
+  collectionIds: string[];
+  images: UpdateOfferingExistingImage[];
+  deletedImageKeys: string[];
+  offeringimages: UpdateOfferingImageUpload[];
+};
+
+export type UpdateOfferingApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: unknown;
+};
+
+/** PUT /offerings/:id */
+export async function updateOffering(
+  id: string,
+  payload: UpdateOfferingPayload,
+) {
+  const response = await api.put<UpdateOfferingApiResponse>(
+    `${OFFERING_ENDPOINTS.list}/${encodeURIComponent(id)}`,
+    payload,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not update offering.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    id,
+    message: response.message?.trim() || "Offering updated successfully",
+    data: response.data,
+  };
+}
+
 export type CreateOfferingCategoryPayload = {
   name: {
     en: string;
@@ -453,3 +543,68 @@ export async function createOfferingCategoryApi(
 
   return { id, message: response.message };
 }
+
+export type CopyOfferingPayload = {
+  targetVendorId: string;
+};
+
+export type CopyOfferingApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: unknown;
+};
+
+/** POST /offerings/:id/copy */
+export async function copyOffering(
+  id: string,
+  payload: CopyOfferingPayload,
+) {
+  const response = await api.post<CopyOfferingApiResponse>(
+    `${OFFERING_ENDPOINTS.list}/${encodeURIComponent(id)}/copy`,
+    payload,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not copy offering.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    message: response.message?.trim() || "Offering copied successfully",
+    data: response.data,
+  };
+}
+
+export type DeleteOfferingApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    _id?: string;
+    deleted?: boolean;
+  };
+};
+
+/** DELETE /offerings/:id (Soft Delete) */
+export async function deleteOffering(id: string) {
+  const response = await api.delete<DeleteOfferingApiResponse>(
+    `${OFFERING_ENDPOINTS.list}/${encodeURIComponent(id)}`,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not delete offering.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    id: response?.data?._id ?? id,
+    deleted: response?.data?.deleted ?? true,
+    message: response?.message ?? "Offering deleted successfully",
+  };
+}
+

@@ -14,42 +14,7 @@ import {
   type OfferingApprovalStatus,
 } from "@/services/offerings";
 
-let offeringApprovalsState: OfferingApprovalRecord[] = [
-  {
-    id: "oa-1",
-    vendorId: "vnd-6",
-    requestType: "delete",
-    published: true,
-    thumbUrl:
-      "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=160&h=160&fit=crop",
-    thumbAlt: "Burger station offering",
-    vendorEnglish: "The F Planner *",
-    vendorArabic: "* ذا اف بلانر",
-    englishName: "[Copy] Testing for delete",
-    arabicName: "اختبار للحذف",
-    createdAt: "2025-08-18T12:11:00.000Z",
-    updatedAt: "2026-02-04T11:16:00.000Z",
-    categoryEnglish: "Burger Station",
-    categoryArabic: "عربة برجر",
-  },
-  {
-    id: "oa-2",
-    vendorId: "vnd-9",
-    requestType: "new",
-    published: false,
-    thumbUrl:
-      "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=160&h=160&fit=crop",
-    thumbAlt: "Seafood platter offering",
-    vendorEnglish: "Blue Signature Café",
-    vendorArabic: "مقهى بلو سيجنتشر",
-    englishName: "Weekend Seafood Platter",
-    arabicName: "طبق مأكولات بحرية لعطلة نهاية الأسبوع",
-    createdAt: "2025-10-02T09:30:00.000Z",
-    updatedAt: "2026-01-15T14:45:00.000Z",
-    categoryEnglish: "Seafood Platter",
-    categoryArabic: "طبق مأكولات بحرية",
-  },
-];
+let offeringApprovalsState: OfferingApprovalRecord[] = [];
 
 const approvalCache = new Map<string, OfferingApprovalRecord>();
 

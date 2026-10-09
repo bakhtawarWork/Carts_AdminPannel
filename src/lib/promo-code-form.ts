@@ -3,45 +3,41 @@ import type {
   PromoCodeRecord,
   PromoCodeType,
 } from "@/lib/types";
+import { ApiError } from "@/services/api";
+import {
+  createPromoCode,
+  type UpdatePromoCodePayload,
+} from "@/services/promo-codes";
 
 export const PROMO_CODE_TYPE_OPTIONS = [
   { value: "", label: "Select type" },
-  { value: "percentage", label: "Percentage" },
   { value: "fixed", label: "Fixed" },
-  { value: "free_delivery", label: "Free delivery" },
+  { value: "percentage", label: "Percentage" },
 ] as const;
-
-export const PROMO_CODE_VENDOR_OPTIONS = [
-  { value: "all", label: "All" },
-  { value: "v-enjoy", label: "Enjoy Sweets / إنجوي سويت للتجارة والزهور" },
-  { value: "v-hundred", label: "Hundred Coffee / هاندريد كوفي" },
-  {
-    value: "v-art-chocolate",
-    label:
-      "The Art of Chocolate - For Events & Gifting / فن الشوكولاتة - للمناسبات و الهدايا",
-  },
-  { value: "v-melenzane", label: "Melenzane / ملنزاني" },
-  { value: "v-larc", label: "LARC / لارك" },
-  { value: "v-sultan", label: "Al Sultan / السلطان" },
-  { value: "v-exit55", label: "Exit 55 / اكزت ٥٥" },
-  { value: "v-sable", label: "Sable Sweets / حلويات سابليه" },
-  { value: "v-pearl", label: "Pearl Events / لؤلؤة للمناسبات" },
-] as const;
-
-function delay(ms = 320) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function toDateInput(value: string) {
   return value.slice(0, 10);
 }
 
+function toStartDateIso(value: string) {
+  return `${value}T00:00:00.000Z`;
+}
+
+function toEndDateIso(value: string) {
+  return `${value}T23:59:59.000Z`;
+}
+
 export function createEmptyPromoCodeForm(): PromoCodeFormData {
+  const today = new Date();
+  const start = today.toISOString().slice(0, 10);
+  const endDate = new Date(today);
+  endDate.setDate(endDate.getDate() + 7);
+
   return {
     code: "",
     maxUsageLimit: "-1",
-    startDate: "2026-08-31",
-    endDate: "2026-09-07",
+    startDate: start,
+    endDate: endDate.toISOString().slice(0, 10),
     promoCodeType: "",
     vendorId: "all",
     vendorEnglish: "",
@@ -61,7 +57,7 @@ export function promoFormFromRecord(record: PromoCodeRecord): PromoCodeFormData 
     startDate: toDateInput(record.startDate),
     endDate: toDateInput(record.endDate),
     promoCodeType: record.promoCodeType,
-    vendorId: record.vendorId,
+    vendorId: record.vendorId || "all",
     vendorEnglish: record.vendorEnglish,
     vendorArabic: record.vendorArabic,
     isLive: record.isActive,
@@ -73,24 +69,128 @@ export function promoFormFromRecord(record: PromoCodeRecord): PromoCodeFormData 
   };
 }
 
-/** Swap for a real API call when available. */
+/** Load promo for edit — GET /admin/promocode/:id → { promoCodes: { ... } } */
 export async function fetchPromoCodeForm(
   id: string,
 ): Promise<PromoCodeFormData | null> {
-  await delay();
-  const { getPromoCodeById } = await import("@/lib/promo-codes");
-  const record = getPromoCodeById(id);
-  if (!record || record.createdBy !== "vendor") return null;
+  const { getPromoCodeDetails } = await import("@/services/promo-codes");
+  const { mapPromoCodeApiItem } = await import("@/lib/promo-codes");
+
+  const item = await getPromoCodeDetails(id);
+  // Details `createdBy` is a vendor/admin user id, not the list tab key.
+  const createdBy =
+    item.createdBy?.toLowerCase() === "admin" ? "admin" : "vendor";
+  const record = mapPromoCodeApiItem(item, createdBy);
+  if (!record) return null;
+
   return promoFormFromRecord(record);
 }
 
-/** Swap for a real API call when available. */
-export async function savePromoCodeForm(data: PromoCodeFormData) {
-  await delay();
+function toApiFieldValues(data: PromoCodeFormData): UpdatePromoCodePayload {
+  if (data.promoCodeType !== "fixed" && data.promoCodeType !== "percentage") {
+    throw new Error("Promo code type is required.");
+  }
+
+  return {
+    code: data.code.trim(),
+    maxUsages: Number(data.maxUsageLimit),
+    startDate: toStartDateIso(data.startDate),
+    endDate: toEndDateIso(data.endDate),
+    promoType: data.promoCodeType,
+    affectedVendors: data.vendorId.trim() || "all",
+    amount: Number(data.amountQr),
+    cartsShare: data.cartsSharePercent,
+    live: data.isLive,
+  };
+}
+
+/** Build PUT body with only fields that differ from the loaded promo. */
+export function buildPromoCodeUpdatePayload(
+  original: PromoCodeFormData,
+  next: PromoCodeFormData,
+): UpdatePromoCodePayload {
+  const before = toApiFieldValues(original);
+  const after = toApiFieldValues(next);
+  const patch: UpdatePromoCodePayload = {};
+
+  (Object.keys(after) as (keyof UpdatePromoCodePayload)[]).forEach((key) => {
+    if (after[key] !== before[key]) {
+      Object.assign(patch, { [key]: after[key] });
+    }
+  });
+
+  return patch;
+}
+
+/** POST /admin/promocode/create or PUT /admin/promocode/update/:id (changed fields only). */
+export async function savePromoCodeForm(
+  data: PromoCodeFormData,
+  original?: PromoCodeFormData | null,
+) {
+  const { invalidatePromoCodesListCache } = await import("@/lib/promo-codes");
+  const { updatePromoCode } = await import("@/services/promo-codes");
+
+  if (data.id) {
+    if (!original) {
+      throw new Error("Original promo code values are missing.");
+    }
+
+    const patch = buildPromoCodeUpdatePayload(original, data);
+    if (Object.keys(patch).length === 0) {
+      throw new Error("No changes to save.");
+    }
+
+    const result = await updatePromoCode(data.id, patch);
+    invalidatePromoCodesListCache();
+
+    return {
+      ok: true as const,
+      id: data.id,
+      message: result.message,
+    };
+  }
+
+  const payload = toApiFieldValues(data);
+  const result = await createPromoCode({
+    code: payload.code!,
+    maxUsages: payload.maxUsages!,
+    startDate: payload.startDate!,
+    endDate: payload.endDate!,
+    promoType: payload.promoType!,
+    affectedVendors: payload.affectedVendors!,
+    amount: payload.amount!,
+    cartsShare: payload.cartsShare!,
+    live: payload.live!,
+  });
+
+  invalidatePromoCodesListCache("admin");
+
   return {
     ok: true as const,
-    id: data.id ?? `promo-${data.code.toLowerCase() || "new"}`,
+    id: result.data._id ?? result.data.id ?? "",
+    message: result.message,
   };
+}
+
+export function getPromoCodeSaveErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.message.trim()) return error.message;
+    const data = error.data;
+    if (typeof data === "string" && data.trim()) return data.trim();
+    if (data && typeof data === "object") {
+      const record = data as Record<string, unknown>;
+      if (typeof record.data === "string" && record.data.trim()) {
+        return record.data.trim();
+      }
+      if (typeof record.message === "string" && record.message.trim()) {
+        return record.message.trim();
+      }
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Could not save promo code. Please try again.";
 }
 
 export function validatePromoCodeForm(
@@ -105,26 +205,59 @@ export function validatePromoCodeForm(
   }
   if (!data.promoCodeType) return "Promo code type is required.";
   const limit = Number(data.maxUsageLimit);
-  if (Number.isNaN(limit) || limit < -1) {
+  if (Number.isNaN(limit) || limit < -1 || limit === 0) {
     return "Max usage limit must be -1 (unlimited) or a positive number.";
   }
 
-  if (options?.isEdit || data.promoCodeType === "fixed") {
-    const amount = Number(data.amountQr);
-    if (Number.isNaN(amount) || amount <= 0) {
-      return "Amount (QR) must be a positive number.";
+  const amount = Number(data.amountQr);
+  if (Number.isNaN(amount) || amount <= 0) {
+    return data.promoCodeType === "percentage"
+      ? "Amount (%) must be a positive number."
+      : "Amount (QR) must be a positive number.";
+  }
+
+  if (data.promoCodeType === "percentage" && amount > 100) {
+    return "Amount (%) must be between 1 and 100.";
+  }
+
+  if (data.promoCodeType === "percentage") {
+    if (data.cartsSharePercent < 0 || data.cartsSharePercent > 100) {
+      return "Carts share (%) must be between 0 and 100.";
+    }
+  } else if (data.promoCodeType === "fixed") {
+    if (data.cartsSharePercent < 0 || data.cartsSharePercent > amount) {
+      return "Carts share (QR) must be between 0 and the amount.";
     }
   }
 
-  if (data.cartsSharePercent < 0 || data.cartsSharePercent > 100) {
-    return "Carts share must be between 0 and 100.";
+  if (options?.isEdit && !data.id) {
+    return "Promo code id is missing.";
   }
 
   return null;
 }
 
-export function vendorsShareFromCarts(cartsShare: number) {
+/** Percentage: vendor % = 100 - carts %. Fixed: vendor QR = amount - carts QR. */
+export function vendorsShareFromCarts(
+  cartsShare: number,
+  options?: { promoCodeType?: PromoCodeType | ""; amount?: number },
+) {
+  if (options?.promoCodeType === "fixed") {
+    const amount = Number.isFinite(options.amount) ? (options.amount ?? 0) : 0;
+    return Math.max(0, amount - cartsShare);
+  }
   return Math.max(0, Math.min(100, 100 - cartsShare));
+}
+
+export function cartsShareSliderMax(
+  promoCodeType: PromoCodeType | "",
+  amountValue: string | number,
+) {
+  if (promoCodeType === "fixed") {
+    const amount = Number(amountValue);
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  }
+  return 100;
 }
 
 export function formatVendorHeader(english: string, arabic: string) {

@@ -9,6 +9,8 @@ import type {
   VendorOfferingsResponse,
 } from "@/lib/types";
 import {
+  copyOffering,
+  deleteOffering,
   getVendorOfferings,
   type VendorOfferingApiItem,
 } from "@/services/offerings";
@@ -16,77 +18,7 @@ import { getVendorDetails } from "@/services/vendors";
 
 const UNCATEGORIZED_TAB_ID = "__uncategorized__";
 
-let vendorOfferingsState: VendorOfferingRecord[] = [
-  {
-    id: "off-tp-1",
-    vendorId: "vnd-1",
-    name: { en: "Test Payment", ar: "Test payment" },
-    approveStatus: "approved",
-    published: true,
-    category: {
-      id: "65b23fed9ba0330f75fc9644",
-      name: { en: "Adults Package", ar: "باقة الكبار" },
-    },
-    thumbUrl:
-      "https://images.unsplash.com/photo-1555244162-803834f70033?w=320&h=240&fit=crop",
-    thumbAlt: "Test Payment offering",
-    startingPrice: 0,
-    price: 0,
-    createdAt: "2025-11-23T07:57:34.188Z",
-    updatedAt: "2025-11-23T07:57:34.861Z",
-  },
-  {
-    id: "off-tp-2",
-    vendorId: "vnd-1",
-    name: { en: "Weekend Brunch Box", ar: "صندوق برنش نهاية الأسبوع" },
-    approveStatus: "pending",
-    published: false,
-    category: {
-      id: "65b241889ba0330f75fc9646",
-      name: { en: "Breakfast Buffet", ar: "بوفيه الإفطار" },
-    },
-    thumbUrl:
-      "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=320&h=240&fit=crop",
-    thumbAlt: "Weekend brunch offering",
-    startingPrice: 450,
-    price: 45,
-    createdAt: "2026-01-10T09:00:00.000Z",
-    updatedAt: "2026-02-12T11:20:00.000Z",
-  },
-  {
-    id: "off-tp-3",
-    vendorId: "vnd-1",
-    name: { en: "Uncategorized Sample", ar: "عرض بدون فئة" },
-    approveStatus: "approved",
-    published: true,
-    category: null,
-    thumbUrl:
-      "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=320&h=240&fit=crop",
-    thumbAlt: "Uncategorized offering",
-    startingPrice: 200,
-    price: 25,
-    createdAt: "2026-02-01T14:00:00.000Z",
-    updatedAt: "2026-02-15T08:30:00.000Z",
-  },
-  {
-    id: "off-ss-1",
-    vendorId: "vnd-6",
-    name: { en: "Signature Dessert Table", ar: "طاولة حلويات مميزة" },
-    approveStatus: "approved",
-    published: true,
-    category: {
-      id: "65b242aa9ba0330f75fc9647",
-      name: { en: "Cake", ar: "كيك" },
-    },
-    thumbUrl:
-      "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=320&h=240&fit=crop",
-    thumbAlt: "Dessert table offering",
-    startingPrice: 1200,
-    price: 80,
-    createdAt: "2025-09-05T10:00:00.000Z",
-    updatedAt: "2026-01-20T16:45:00.000Z",
-  },
-];
+let vendorOfferingsState: VendorOfferingRecord[] = [];
 
 function delay(ms = 220) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -330,40 +262,24 @@ export async function fetchVendorOfferings(
   };
 }
 
-/** Swap for a real API call when available. */
-export async function copyVendorOffering(vendorId: string, offeringId: string) {
-  await delay(200);
-  const source = vendorOfferingsState.find(
-    (offering) => offering.vendorId === vendorId && offering.id === offeringId,
-  );
-  if (!source) return null;
-
-  const copy: VendorOfferingRecord = {
-    ...structuredClone(source),
-    id: createOfferingId(),
-    name: {
-      en: `[Copy] ${source.name.en}`,
-      ar: `[نسخة] ${source.name.ar}`,
-    },
-    approveStatus: "pending",
-    published: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  vendorOfferingsState = [copy, ...vendorOfferingsState];
-  return copy;
+/** POST /offerings/:id/copy */
+export async function copyVendorOffering(
+  offeringId: string,
+  targetVendorId: string,
+) {
+  return copyOffering(offeringId, { targetVendorId });
 }
 
-/** Swap for a real API call when available. */
-export async function deleteVendorOffering(vendorId: string, offeringId: string) {
-  await delay(180);
-  const next = vendorOfferingsState.filter(
+export async function deleteVendorOffering(
+  vendorId: string,
+  offeringId: string,
+) {
+  const result = await deleteOffering(offeringId);
+  vendorOfferingsState = vendorOfferingsState.filter(
     (offering) =>
       !(offering.vendorId === vendorId && offering.id === offeringId),
   );
-  if (next.length === vendorOfferingsState.length) return false;
-  vendorOfferingsState = next;
-  return true;
+  return result;
 }
 
 export { UNCATEGORIZED_TAB_ID };

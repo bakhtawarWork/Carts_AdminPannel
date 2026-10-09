@@ -12,6 +12,7 @@ import {
   formatOfferingPrice,
   offeringMatchesCategory,
 } from "@/lib/vendor-offerings";
+import { useVendorFilterOptions } from "@/hooks/useVendorFilterOptions";
 import type { VendorOfferingRecord } from "@/lib/types";
 
 type VendorOfferingsViewProps = {
@@ -33,8 +34,16 @@ export default function VendorOfferingsView({
   const [deleteTarget, setDeleteTarget] = useState<VendorOfferingRecord | null>(
     null,
   );
+  const [copyTarget, setCopyTarget] = useState<VendorOfferingRecord | null>(
+    null,
+  );
+  const [targetVendorId, setTargetVendorId] = useState<string>("");
+  const [copying, setCopying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const { options: vendorOptions = [], loading: vendorOptionsLoading } =
+    useVendorFilterOptions();
 
   const loadOfferings = useCallback(async () => {
     setLoading(true);
@@ -106,18 +115,31 @@ export default function VendorOfferingsView({
   ).length;
   const publishedCount = offerings.filter((offering) => offering.published).length;
 
-  async function handleCopy(offeringId: string) {
-    setBusyId(offeringId);
+  function openCopyModal(offering: VendorOfferingRecord) {
+    setCopyTarget(offering);
+    setTargetVendorId(vendorId);
+    setError(null);
+    setMessage(null);
+  }
+
+  async function handleConfirmCopy() {
+    if (!copyTarget || !targetVendorId) return;
+    setCopying(true);
     setError(null);
     setMessage(null);
     try {
-      await copyVendorOffering(vendorId, offeringId);
-      await loadOfferings();
-      setMessage("Offering copied. The duplicate is pending approval.");
-    } catch {
-      setError("Could not copy offering.");
+      const response = await copyVendorOffering(copyTarget.id, targetVendorId);
+      setCopyTarget(null);
+      if (targetVendorId === vendorId) {
+        await loadOfferings();
+      }
+      setMessage(response?.message || "Offering copied successfully.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not copy offering.",
+      );
     } finally {
-      setBusyId(null);
+      setCopying(false);
     }
   }
 
@@ -127,12 +149,14 @@ export default function VendorOfferingsView({
     setError(null);
     setMessage(null);
     try {
-      await deleteVendorOffering(vendorId, deleteTarget.id);
+      const response = await deleteVendorOffering(vendorId, deleteTarget.id);
       setDeleteTarget(null);
       await loadOfferings();
-      setMessage("Offering deleted.");
-    } catch {
-      setError("Could not delete offering.");
+      setMessage(response?.message || "Offering deleted successfully.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not delete offering.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -240,7 +264,7 @@ export default function VendorOfferingsView({
                       offering={offering}
                       vendorId={vendorId}
                       busy={busyId === offering.id}
-                      onCopy={() => handleCopy(offering.id)}
+                      onCopy={() => openCopyModal(offering)}
                       onDelete={() => setDeleteTarget(offering)}
                     />
                   ))}
@@ -269,6 +293,21 @@ export default function VendorOfferingsView({
           busy={busyId === deleteTarget.id}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={handleDelete}
+        />
+      ) : null}
+
+      {copyTarget ? (
+        <CopyOfferingModal
+          offeringName={copyTarget.name.en.trim()}
+          vendorOptions={vendorOptions}
+          vendorOptionsLoading={vendorOptionsLoading}
+          selectedVendorId={targetVendorId}
+          onSelectVendor={setTargetVendorId}
+          busy={copying}
+          onCancel={() => {
+            if (!copying) setCopyTarget(null);
+          }}
+          onDone={() => void handleConfirmCopy()}
         />
       ) : null}
     </div>
@@ -516,6 +555,99 @@ function ConfirmModal({
             className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CopyOfferingModal({
+  offeringName,
+  vendorOptions = [],
+  vendorOptionsLoading,
+  selectedVendorId,
+  onSelectVendor,
+  busy,
+  onCancel,
+  onDone,
+}: {
+  offeringName: string;
+  vendorOptions?: { id: string; label: string }[];
+  vendorOptionsLoading: boolean;
+  selectedVendorId: string;
+  onSelectVendor: (id: string) => void;
+  busy: boolean;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close dialog"
+        disabled={busy}
+        onClick={onCancel}
+        className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px]"
+      />
+      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h3 className="text-base font-semibold text-slate-900">
+            Copy Offering
+          </h3>
+          <p className="mt-0.5 truncate text-xs text-slate-500">
+            {offeringName}
+          </p>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          <div>
+            <p className="text-sm font-medium text-slate-900">
+              Which vendor do you want to copy to?
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Don&apos;t worry, the new offering will not be published by default
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Select Vendor
+            </label>
+            <select
+              value={selectedVendorId}
+              onChange={(e) => onSelectVendor(e.target.value)}
+              disabled={busy || vendorOptionsLoading}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="" disabled>
+                {vendorOptionsLoading ? "Loading vendors…" : "Select a vendor"}
+              </option>
+              {(vendorOptions ?? []).map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/80 px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onDone}
+            disabled={busy || !selectedVendorId}
+            className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Copying…" : "Done"}
           </button>
         </div>
       </div>

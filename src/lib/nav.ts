@@ -13,7 +13,8 @@ export type NavIcon =
   | "locations"
   | "collections"
   | "popular"
-  | "filter-types";
+  | "filter-types"
+  | "banners";
 
 export type NavLink = {
   href: string;
@@ -113,6 +114,12 @@ export const APP_NAV: NavItem[] = [
     href: "/filter-types",
     label: "Filter Types",
     icon: "filter-types",
+  },
+  {
+    type: "link",
+    href: "/banners",
+    label: "Banner",
+    icon: "banners",
   },
 ];
 
@@ -268,6 +275,20 @@ export const FILTER_TYPES_SECTION_META: Record<
   },
 };
 
+export const BANNERS_SECTION_META: Record<
+  string,
+  { title: string; description: string }
+> = {
+  "/banners": {
+    title: "Banners",
+    description: "Manage main and sub banners shown on the landing page.",
+  },
+  "/banners/new": {
+    title: "Add Banner",
+    description: "Create a main or sub banner with image and sequence.",
+  },
+};
+
 export function isNavLinkActive(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === "/dashboard";
   if (href === "/vendors") return pathname === "/vendors";
@@ -280,6 +301,7 @@ export function isNavLinkActive(pathname: string, href: string) {
   if (href === "/collections") return pathname.startsWith("/collections");
   if (href === "/popular") return pathname.startsWith("/popular");
   if (href === "/filter-types") return pathname.startsWith("/filter-types");
+  if (href === "/banners") return pathname.startsWith("/banners");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
