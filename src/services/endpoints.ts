@@ -29,6 +29,8 @@ export const VENDOR_ENDPOINTS = {
 
 export const LOCATION_ENDPOINTS = {
   list: "locations",
+  createLocation: "locations/createlocation",
+  createSubarea: (locationId: string) => `locations/${locationId}/subareas`,
 } as const;
 
 export const ORDER_ENDPOINTS = {

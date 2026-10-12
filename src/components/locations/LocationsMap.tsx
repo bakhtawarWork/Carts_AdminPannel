@@ -14,21 +14,43 @@ type LocationsMapProps = {
   selectedId: string | null;
   showAll: boolean;
   editing: boolean;
+  draftPath: MapLatLng[] | null;
+  fallbackCenter?: MapLatLng | null;
   onSelect: (subareaId: string) => void;
-  onPathChange: (path: MapLatLng[]) => void;
+  onDraftPathChange: (path: MapLatLng[]) => void;
 };
 
 function readPath(polygon: google.maps.Polygon): MapLatLng[] {
   const path = polygon.getPath();
+  if (!path) return [];
   const points: MapLatLng[] = [];
   for (let index = 0; index < path.getLength(); index += 1) {
     const point = path.getAt(index);
-    points.push({ lat: point.lat(), lng: point.lng() });
+    if (point) {
+      points.push({ lat: point.lat(), lng: point.lng() });
+    }
   }
   return points;
 }
 
-function fitToSubareas(map: google.maps.Map, subareas: LocationMapSubarea[]) {
+function isPathEqual(a: MapLatLng[], b: MapLatLng[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (
+      Math.abs(a[i].lat - b[i].lat) > 1e-7 ||
+      Math.abs(a[i].lng - b[i].lng) > 1e-7
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function fitToSubareas(
+  map: google.maps.Map,
+  subareas: LocationMapSubarea[],
+  fallbackCenter?: MapLatLng | null,
+) {
   const bounds = new google.maps.LatLngBounds();
   let hasPoint = false;
   for (const subarea of subareas) {
@@ -39,6 +61,9 @@ function fitToSubareas(map: google.maps.Map, subareas: LocationMapSubarea[]) {
   }
   if (hasPoint) {
     map.fitBounds(bounds, { top: 48, right: 48, bottom: 48, left: 48 });
+  } else {
+    map.setCenter(fallbackCenter ?? LOCATION_MAP_DEFAULT_CENTER);
+    map.setZoom(fallbackCenter ? 13 : LOCATION_MAP_DEFAULT_ZOOM);
   }
 }
 
@@ -56,23 +81,41 @@ export function LocationsMap({
   selectedId,
   showAll,
   editing,
+  draftPath,
+  fallbackCenter,
   onSelect,
-  onPathChange,
+  onDraftPathChange,
 }: LocationsMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const onSelectRef = useRef(onSelect);
-  const onPathChangeRef = useRef(onPathChange);
+  const onDraftPathChangeRef = useRef(onDraftPathChange);
   const editingRef = useRef(editing);
+  const draftPathRef = useRef(draftPath);
+
+  const draftElementsRef = useRef<{
+    markers: google.maps.Marker[];
+    polyline: google.maps.Polyline | null;
+    polygon: google.maps.Polygon | null;
+    polygonListeners: google.maps.MapsEventListener[];
+  }>({
+    markers: [],
+    polyline: null,
+    polygon: null,
+    polygonListeners: [],
+  });
+
   const [mapReady, setMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
-    onPathChangeRef.current = onPathChange;
+    onDraftPathChangeRef.current = onDraftPathChange;
     editingRef.current = editing;
-  }, [onSelect, onPathChange, editing]);
+    draftPathRef.current = draftPath;
+  }, [onSelect, onDraftPathChange, editing, draftPath]);
 
+  // 1. Initialize Google Map
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !GOOGLE_MAPS_API_KEY) return;
@@ -83,8 +126,8 @@ export function LocationsMap({
       .then(() => {
         if (cancelled || !containerRef.current) return;
         mapRef.current = new google.maps.Map(containerRef.current, {
-          center: LOCATION_MAP_DEFAULT_CENTER,
-          zoom: LOCATION_MAP_DEFAULT_ZOOM,
+          center: fallbackCenter ?? LOCATION_MAP_DEFAULT_CENTER,
+          zoom: fallbackCenter ? 13 : LOCATION_MAP_DEFAULT_ZOOM,
           mapTypeControl: false,
           streetViewControl: true,
           fullscreenControl: true,
@@ -110,47 +153,43 @@ export function LocationsMap({
     };
   }, []);
 
+  // 2. Render static polygons for non-editing subareas
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map) return;
 
     const listeners: google.maps.MapsEventListener[] = [];
-    const polygons = new Map<string, google.maps.Polygon>();
+    const polygons: google.maps.Polygon[] = [];
     const visible = visibleSubareas(subareas, selectedId, showAll);
 
     for (const subarea of visible) {
+      if (editing && subarea.id === selectedId) continue;
+      if (!subarea.path || subarea.path.length === 0) continue;
+
       const isSelected = subarea.id === selectedId;
-      const isEditable = editing && isSelected;
       const polygon = new google.maps.Polygon({
         map,
         paths: subarea.path,
         strokeColor: "#e31e24",
         strokeOpacity: 1,
         strokeWeight: isSelected ? 2.5 : 1.5,
-        fillColor: isEditable ? "#334155" : "#e31e24",
-        fillOpacity: isSelected ? (isEditable ? 0.42 : 0.22) : 0.08,
-        clickable: !editing || isSelected,
-        editable: isEditable,
+        fillColor: "#e31e24",
+        fillOpacity: isSelected ? 0.22 : 0.08,
+        clickable: !editing,
+        editable: false,
         draggable: false,
         zIndex: isSelected ? 2 : 1,
       });
 
-      listeners.push(
-        polygon.addListener("click", () => {
-          if (editingRef.current) return;
-          onSelectRef.current(subarea.id);
-        }),
-      );
-
-      if (isEditable) {
-        const path = polygon.getPath();
-        const emit = () => onPathChangeRef.current(readPath(polygon));
-        listeners.push(path.addListener("set_at", emit));
-        listeners.push(path.addListener("insert_at", emit));
-        listeners.push(path.addListener("remove_at", emit));
+      if (!editing) {
+        listeners.push(
+          polygon.addListener("click", () => {
+            onSelectRef.current(subarea.id);
+          }),
+        );
       }
 
-      polygons.set(subarea.id, polygon);
+      polygons.push(polygon);
     }
 
     return () => {
@@ -159,19 +198,210 @@ export function LocationsMap({
     };
   }, [mapReady, subareas, selectedId, showAll, editing]);
 
+  // 3. Map crosshair and click-to-place-dot listener when editing
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+
+    if (!editing) {
+      map.setOptions({ draggableCursor: null });
+      return;
+    }
+
+    map.setOptions({ draggableCursor: "crosshair" });
+
+    const clickListener = map.addListener(
+      "click",
+      (event: google.maps.MapMouseEvent) => {
+        if (!editingRef.current || !event.latLng) return;
+        const newPoint: MapLatLng = {
+          lat: event.latLng.lat(),
+          lng: event.latLng.lng(),
+        };
+        const current = draftPathRef.current ?? [];
+        onDraftPathChangeRef.current([...current, newPoint]);
+      },
+    );
+
+    return () => {
+      clickListener.remove();
+      map.setOptions({ draggableCursor: null });
+    };
+  }, [mapReady, editing]);
+
+  // 4. Render interactive draft elements: Dot 1 marker, Dot 2 marker + polyline, Dot 3+ editable polygon
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+
+    const elements = draftElementsRef.current;
+
+    if (!editing) {
+      elements.markers.forEach((m) => m.setMap(null));
+      elements.markers = [];
+      if (elements.polyline) {
+        elements.polyline.setMap(null);
+        elements.polyline = null;
+      }
+      if (elements.polygon) {
+        elements.polygonListeners.forEach((l) => l.remove());
+        elements.polygonListeners = [];
+        elements.polygon.setMap(null);
+        elements.polygon = null;
+      }
+      return;
+    }
+
+    const currentPoints = draftPath ?? [];
+
+    // If an editable polygon already exists and matches currentPoints, skip rebuilding so dragging is not interrupted
+    if (elements.polygon) {
+      const activePoints = readPath(elements.polygon);
+      if (isPathEqual(activePoints, currentPoints)) {
+        return;
+      }
+    }
+
+    // Clean up temporary markers and polyline
+    elements.markers.forEach((m) => m.setMap(null));
+    elements.markers = [];
+    if (elements.polyline) {
+      elements.polyline.setMap(null);
+      elements.polyline = null;
+    }
+
+    if (currentPoints.length === 0) {
+      if (elements.polygon) {
+        elements.polygonListeners.forEach((l) => l.remove());
+        elements.polygonListeners = [];
+        elements.polygon.setMap(null);
+        elements.polygon = null;
+      }
+    } else if (currentPoints.length === 1) {
+      if (elements.polygon) {
+        elements.polygonListeners.forEach((l) => l.remove());
+        elements.polygonListeners = [];
+        elements.polygon.setMap(null);
+        elements.polygon = null;
+      }
+      elements.markers.push(
+        new google.maps.Marker({
+          position: currentPoints[0],
+          map,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 9,
+            fillColor: "#e31e24",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 2.5,
+          },
+          label: {
+            text: "1",
+            color: "#ffffff",
+            fontSize: "11px",
+            fontWeight: "bold",
+          },
+          title: "Dot 1",
+        }),
+      );
+    } else if (currentPoints.length === 2) {
+      if (elements.polygon) {
+        elements.polygonListeners.forEach((l) => l.remove());
+        elements.polygonListeners = [];
+        elements.polygon.setMap(null);
+        elements.polygon = null;
+      }
+      currentPoints.forEach((point, index) => {
+        elements.markers.push(
+          new google.maps.Marker({
+            position: point,
+            map,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 9,
+              fillColor: "#e31e24",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2.5,
+            },
+            label: {
+              text: String(index + 1),
+              color: "#ffffff",
+              fontSize: "11px",
+              fontWeight: "bold",
+            },
+            title: `Dot ${index + 1}`,
+          }),
+        );
+      });
+      elements.polyline = new google.maps.Polyline({
+        path: currentPoints,
+        map,
+        strokeColor: "#e31e24",
+        strokeOpacity: 1,
+        strokeWeight: 2.5,
+      });
+    } else if (currentPoints.length >= 3) {
+      if (elements.polygon) {
+        elements.polygon.setPath(currentPoints);
+      } else {
+        const polygon = new google.maps.Polygon({
+          map,
+          paths: currentPoints,
+          strokeColor: "#e31e24",
+          strokeOpacity: 1,
+          strokeWeight: 2.5,
+          fillColor: "#e31e24",
+          fillOpacity: 0.28,
+          editable: true,
+          draggable: false,
+          clickable: false,
+          zIndex: 10,
+        });
+
+        const path = polygon.getPath();
+        if (path && typeof path.addListener === "function") {
+          const emit = () => {
+            onDraftPathChangeRef.current(readPath(polygon));
+          };
+          elements.polygonListeners.push(path.addListener("set_at", emit));
+          elements.polygonListeners.push(path.addListener("insert_at", emit));
+          elements.polygonListeners.push(path.addListener("remove_at", emit));
+        }
+
+        elements.polygon = polygon;
+      }
+    }
+  }, [mapReady, editing, draftPath]);
+
+  // Clean up all draft elements on unmount
+  useEffect(() => {
+    return () => {
+      const elements = draftElementsRef.current;
+      elements.markers.forEach((m) => m.setMap(null));
+      if (elements.polyline) elements.polyline.setMap(null);
+      if (elements.polygon) {
+        elements.polygonListeners.forEach((l) => l.remove());
+        elements.polygon.setMap(null);
+      }
+    };
+  }, []);
+
+  // 5. Fit bounds when viewing
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map || editing) return;
 
     const visible = visibleSubareas(subareas, selectedId, showAll);
     if (visible.length > 0) {
-      fitToSubareas(map, visible);
+      fitToSubareas(map, visible, fallbackCenter);
       return;
     }
 
-    map.setCenter(LOCATION_MAP_DEFAULT_CENTER);
-    map.setZoom(LOCATION_MAP_DEFAULT_ZOOM);
-  }, [mapReady, subareas, selectedId, showAll, editing]);
+    map.setCenter(fallbackCenter ?? LOCATION_MAP_DEFAULT_CENTER);
+    map.setZoom(fallbackCenter ? 13 : LOCATION_MAP_DEFAULT_ZOOM);
+  }, [mapReady, subareas, selectedId, showAll, fallbackCenter, editing]);
 
   return (
     <div className="relative h-full min-h-[28rem] w-full">

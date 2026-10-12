@@ -5,7 +5,11 @@ import { CreateLocationModal } from "@/components/locations/CreateLocationModal"
 import { LocationsMap } from "@/components/locations/LocationsMap";
 import { GOOGLE_MAPS_API_KEY } from "@/lib/google-maps";
 import {
-  createLocationOrSubarea,
+  createLocationApi,
+  createSubareaApi,
+} from "@/services/locations";
+import {
+  centroidOfPath,
   fetchLocationMapGroups,
   findSubarea,
   flattenSubareas,
@@ -31,6 +35,8 @@ export default function LocationsView() {
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftPath, setDraftPath] = useState<MapLatLng[] | null>(null);
+  const [originalPathBeforeEdit, setOriginalPathBeforeEdit] =
+    useState<MapLatLng[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
@@ -57,62 +63,132 @@ export default function LocationsView() {
   const selected = selectedId ? findSubarea(groups, selectedId) : undefined;
   const hasKey = Boolean(GOOGLE_MAPS_API_KEY);
 
+  const fallbackCenter = useMemo(() => {
+    if (!selected) return null;
+    const parentGroup = groups.find((g) =>
+      g.subareas.some((s) => s.id === selected.id),
+    );
+    const siblingWithPath = parentGroup?.subareas.find((s) => s.path.length > 0);
+    if (siblingWithPath) {
+      return centroidOfPath(siblingWithPath.path);
+    }
+    return null;
+  }, [groups, selected]);
+
   function selectSubarea(id: string) {
     if (editing) return;
     setSelectedId(id);
     setShowAll(false);
-    setMessage(null);
+    setError(null);
+    const target = id ? findSubarea(groups, id) : undefined;
+    if (target && target.path.length === 0) {
+      setMessage(
+        "This subarea has no polygon yet. Click 'Edit' and click on the map to place dots.",
+      );
+    } else {
+      setMessage(null);
+    }
   }
 
   function startEdit() {
     if (!selected) return;
     setEditing(true);
-    setDraftPath(selected.path);
+    setOriginalPathBeforeEdit(selected.path);
+    setDraftPath(selected.path.length > 0 ? [...selected.path] : []);
     setShowAll(false);
+    setError(null);
     setMessage(null);
   }
 
+  function handleUndoDot() {
+    setError(null);
+    setDraftPath((current) => {
+      if (!current || current.length === 0) return [];
+      return current.slice(0, -1);
+    });
+  }
+
+  function handleClearDots() {
+    setError(null);
+    setDraftPath([]);
+  }
+
   function cancelEdit() {
+    if (selectedId && originalPathBeforeEdit !== null) {
+      setGroups((current) =>
+        updateSubareaPath(current, selectedId, originalPathBeforeEdit),
+      );
+    }
     setEditing(false);
     setDraftPath(null);
+    setOriginalPathBeforeEdit(null);
+    setError(null);
+    setMessage(null);
   }
 
   function saveEdit() {
-    if (!selectedId || !draftPath) {
+    if (!selectedId) {
       setEditing(false);
-      setDraftPath(null);
       return;
     }
-    setGroups((current) => updateSubareaPath(current, selectedId, draftPath));
+    const finalPath = draftPath ?? [];
+    if (finalPath.length > 0 && finalPath.length < 3) {
+      setError(
+        "Please place at least 3 dots to form an enclosed delivery area, or click 'Clear dots'.",
+      );
+      return;
+    }
+    setError(null);
+    setGroups((current) => updateSubareaPath(current, selectedId, finalPath));
     setEditing(false);
     setDraftPath(null);
-    setMessage("Polygon saved locally. Backend save will be wired later.");
+    setOriginalPathBeforeEdit(null);
+    setMessage(
+      finalPath.length >= 3
+        ? `Area saved successfully with ${finalPath.length} boundary points.`
+        : "Area polygon cleared.",
+    );
   }
 
-  function handleCreate(payload: {
+  async function handleCreate(payload: {
     locationId: string;
     nameEn: string;
     nameAr: string;
   }) {
-    const next = createLocationOrSubarea(groups, payload);
-    const created =
-      payload.locationId === "new"
-        ? next[next.length - 1]?.subareas[0]
-        : next
-            .find((group) => group.id === payload.locationId)
-            ?.subareas.at(-1);
-
-    setGroups(next);
-    setCreateOpen(false);
-    if (created) {
-      setSelectedId(created.id);
-      setShowAll(false);
+    if (payload.locationId === "new") {
+      await createLocationApi({
+        name: { en: payload.nameEn, ar: payload.nameAr },
+      });
+      setMessage(`Location "${payload.nameEn}" created successfully.`);
+    } else {
+      await createSubareaApi(payload.locationId, {
+        name: { en: payload.nameEn, ar: payload.nameAr },
+      });
+      setMessage(`Subarea "${payload.nameEn}" created successfully.`);
     }
-    setMessage(
-      payload.locationId === "new"
-        ? "New location created locally with a starter polygon. Select Edit to reshape it."
-        : "Subarea created locally with a starter polygon. Select Edit to reshape it.",
-    );
+
+    // Refresh groups from live backend API
+    const updated = await fetchLocationMapGroups();
+    setGroups(updated);
+
+    // If subarea was created, find it and select it
+    if (payload.locationId !== "new") {
+      const parentGroup = updated.find((g) => g.id === payload.locationId);
+      const newSubarea =
+        parentGroup?.subareas.find(
+          (s) =>
+            s.nameEn.toLowerCase() === payload.nameEn.toLowerCase() ||
+            s.nameAr === payload.nameAr,
+        ) ?? parentGroup?.subareas.at(-1);
+
+      if (newSubarea) {
+        setSelectedId(newSubarea.id);
+        setShowAll(false);
+        setMessage(
+          `Subarea "${payload.nameEn}" created. Click 'Edit' and click on the map to draw its boundary dots.`,
+        );
+      }
+    }
   }
 
   return (
@@ -123,17 +199,44 @@ export default function LocationsView() {
             Locations
           </p>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Select a subarea to view its polygon, then edit vertices on the map.
+            Select a subarea to view its polygon, or click Edit to place boundary dots on the map.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {editing ? (
             <>
-              <button type="button" onClick={saveEdit} className={outlineButtonClass}>
-                Save
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={(draftPath?.length ?? 0) > 0 && (draftPath?.length ?? 0) < 3}
+                className="inline-flex items-center justify-center rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand/20 transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Save area
               </button>
-              <button type="button" onClick={cancelEdit} className={outlineButtonClass}>
+              <button
+                type="button"
+                onClick={handleUndoDot}
+                disabled={!draftPath || draftPath.length === 0}
+                className={outlineButtonClass}
+                title="Remove last dot"
+              >
+                Undo dot
+              </button>
+              <button
+                type="button"
+                onClick={handleClearDots}
+                disabled={!draftPath || draftPath.length === 0}
+                className={outlineButtonClass}
+                title="Clear all dots to start over"
+              >
+                Clear dots
+              </button>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className={outlineButtonClass}
+              >
                 Cancel
               </button>
             </>
@@ -197,13 +300,37 @@ export default function LocationsView() {
         </select>
       </label>
 
+      {editing ? (
+        <div className="flex items-center justify-between rounded-xl border border-brand/20 bg-brand-soft/40 px-4 py-3 text-sm">
+          <div className="flex items-center gap-2.5 text-slate-800">
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-brand" />
+            </span>
+            <span className="font-semibold text-brand">Drawing Mode:</span>
+            <span>
+              {!draftPath || draftPath.length === 0
+                ? "Click anywhere on the map to place dot 1."
+                : draftPath.length === 1
+                  ? "Dot 1 placed. Click on the map to place dot 2."
+                  : draftPath.length === 2
+                    ? "Dot 2 placed. Click to place dot 3 to enclose the delivery area."
+                    : `Area enclosed (${draftPath.length} dots). Click map to add more dots, or drag white corner handles to adjust.`}
+            </span>
+          </div>
+          <span className="rounded-md bg-white px-2 py-0.5 text-xs font-semibold text-slate-600 shadow-sm">
+            {draftPath ? `${draftPath.length} dot${draftPath.length === 1 ? "" : "s"}` : "0 dots"}
+          </span>
+        </div>
+      ) : null}
+
       {error ? (
         <p className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
       ) : null}
 
-      {message ? (
+      {!editing && message ? (
         <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {message}
         </p>
@@ -220,8 +347,10 @@ export default function LocationsView() {
             selectedId={selectedId || null}
             showAll={showAll}
             editing={editing}
+            draftPath={editing ? draftPath : null}
+            fallbackCenter={fallbackCenter}
             onSelect={selectSubarea}
-            onPathChange={setDraftPath}
+            onDraftPathChange={setDraftPath}
           />
         )}
       </section>
@@ -243,23 +372,15 @@ function MissingKeyState() {
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-soft text-brand">
         <MapIcon />
       </div>
-      <p className="mt-4 text-sm font-medium text-slate-900">
-        Google Maps API key is missing
-      </p>
+      <h3 className="mt-4 text-base font-semibold text-slate-900">
+        Google Maps API key required
+      </h3>
       <p className="mt-2 max-w-md text-sm text-slate-500">
-        Add your key to the project-root{" "}
-        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">
-          .env
-        </code>{" "}
-        file as{" "}
-        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">
+        Add{" "}
+        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-800">
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-        </code>
-        , then restart{" "}
-        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">
-          npm run dev
-        </code>
-        .
+        </code>{" "}
+        to your environment and reload to view interactive delivery areas.
       </p>
     </div>
   );
@@ -267,14 +388,18 @@ function MissingKeyState() {
 
 function MapIcon() {
   return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 4.5 3.75 6.75v13.5L9 18M9 4.5l6 2.25M9 4.5v13.5m6-11.25 5.25-2.25v13.5L15 18m0-11.25V18m0 0-6 2.25"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-6 w-6"
+    >
+      <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
+      <line x1="9" y1="3" x2="9" y2="18" />
+      <line x1="15" y1="6" x2="15" y2="21" />
     </svg>
   );
 }

@@ -14,7 +14,7 @@ const inputClass =
 type CreateLocationModalProps = {
   groups: LocationMapGroup[];
   onClose: () => void;
-  onCreate: (payload: CreateLocationPayload) => void;
+  onCreate: (payload: CreateLocationPayload) => Promise<void> | void;
 };
 
 export function CreateLocationModal({
@@ -25,17 +25,18 @@ export function CreateLocationModal({
   const [locationId, setLocationId] = useState("");
   const [nameEn, setNameEn] = useState("");
   const [nameAr, setNameAr] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !submitting) onClose();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, submitting]);
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const payload = { locationId, nameEn, nameAr };
     const validationError = validateCreateLocation(payload);
@@ -43,25 +44,37 @@ export function CreateLocationModal({
       setError(validationError);
       return;
     }
-    onCreate(payload);
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onCreate(payload);
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save.");
+    } finally {
+      setSubmitting(false);
+    }
   }
+
+  const isNewLocation = locationId === "new";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
         aria-label="Close dialog"
+        disabled={submitting}
         onClick={onClose}
         className="absolute inset-0 bg-slate-950/40"
       />
       <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="border-b border-slate-100 px-5 py-4">
           <h3 className="text-base font-semibold text-slate-900">
-            Create location / subarea
+            {isNewLocation ? "Create Location" : "Create Subarea / Location"}
           </h3>
           <p className="mt-1 text-sm text-slate-500">
-            Choose an existing location to add a subarea, or start a new
-            location. Dummy data only — nothing is sent to the backend yet.
+            Choose an existing location to add a subarea, or select &quot;Create as new location&quot;.
           </p>
         </div>
 
@@ -78,6 +91,7 @@ export function CreateLocationModal({
             </span>
             <select
               value={locationId}
+              disabled={submitting}
               onChange={(event) => {
                 setLocationId(event.target.value);
                 setError(null);
@@ -96,50 +110,54 @@ export function CreateLocationModal({
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
-              Name in English *
+              {isNewLocation ? "Location Name in English *" : "Subarea Name in English *"}
             </span>
             <input
               type="text"
               value={nameEn}
+              disabled={submitting}
               onChange={(event) => {
                 setNameEn(event.target.value);
                 setError(null);
               }}
               className={inputClass}
-              placeholder="e.g. Al Thakhira"
+              placeholder={isNewLocation ? "e.g. Dubai" : "e.g. Downtown Dubai"}
             />
           </label>
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
-              Name in Arabic *
+              {isNewLocation ? "Location Name in Arabic *" : "Subarea Name in Arabic *"}
             </span>
             <input
               type="text"
               dir="rtl"
               value={nameAr}
+              disabled={submitting}
               onChange={(event) => {
                 setNameAr(event.target.value);
                 setError(null);
               }}
               className={inputClass}
-              placeholder="مثال: الذخيرة"
+              placeholder={isNewLocation ? "مثال: دبي" : "مثال: وسط مدينة دبي"}
             />
           </label>
 
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
+              disabled={submitting}
               onClick={onClose}
-              className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand/20 transition hover:bg-brand-hover"
+              disabled={submitting}
+              className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand/20 transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Create
+              {submitting ? "Saving…" : "Save"}
             </button>
           </div>
         </form>

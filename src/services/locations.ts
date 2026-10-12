@@ -61,3 +61,87 @@ export async function getLocations(): Promise<LocationApiItem[]> {
 
   return [];
 }
+
+export type CreateLocationPayload = {
+  name: {
+    en: string;
+    ar: string;
+  };
+};
+
+export type CreateLocationApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?:
+    | {
+        result?: LocationApiItem;
+        location?: LocationApiItem;
+      }
+    | LocationApiItem;
+};
+
+/** POST /admin/locations/createlocation */
+export async function createLocationApi(
+  payload: CreateLocationPayload,
+): Promise<LocationApiItem> {
+  const response = await api.post<CreateLocationApiResponse>(
+    LOCATION_ENDPOINTS.createLocation,
+    payload,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not create location.",
+      400,
+      response,
+    );
+  }
+
+  const data = response?.data;
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (obj.result && typeof obj.result === "object") {
+      return obj.result as LocationApiItem;
+    }
+    if (obj.location && typeof obj.location === "object") {
+      return obj.location as LocationApiItem;
+    }
+    return obj as unknown as LocationApiItem;
+  }
+
+  return response as unknown as LocationApiItem;
+}
+
+export type CreateSubareaPayload = {
+  name: {
+    en: string;
+    ar: string;
+  };
+};
+
+export type CreateSubareaApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: unknown;
+};
+
+/** POST /admin/locations/:locationId/subareas */
+export async function createSubareaApi(
+  locationId: string,
+  payload: CreateSubareaPayload,
+): Promise<unknown> {
+  const response = await api.post<CreateSubareaApiResponse>(
+    LOCATION_ENDPOINTS.createSubarea(locationId),
+    payload,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not create subarea.",
+      400,
+      response,
+    );
+  }
+
+  return response?.data ?? response;
+}
