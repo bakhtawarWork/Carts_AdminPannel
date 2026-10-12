@@ -124,7 +124,6 @@ export default function LocationsView() {
           </p>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
             Select a subarea to view its polygon, then edit vertices on the map.
-            No locations are loaded — this page is not connected to live data.
           </p>
         </div>
 

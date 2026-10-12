@@ -1,3 +1,5 @@
+import { getLocations } from "@/services/locations";
+
 export type MapLatLng = {
   lat: number;
   lng: number;
@@ -72,12 +74,28 @@ export function findLocationGroup(groups: LocationMapGroup[], locationId: string
   return groups.find((group) => group.id === locationId);
 }
 
-/** Convert GeoJSON Polygon coordinates (`[lng, lat]`) when the API is wired. */
-export function pathFromGeoJsonPolygon(coordinates: number[][][]): MapLatLng[] {
-  const ring = coordinates[0] ?? [];
-  return ring.flatMap(([lng, lat]) =>
-    typeof lat === "number" && typeof lng === "number" ? [{ lat, lng }] : [],
-  );
+/** Convert GeoJSON Polygon coordinates (`[lng, lat]`) to Google Maps `MapLatLng[]`. */
+export function pathFromGeoJsonPolygon(coordinates: unknown): MapLatLng[] {
+  if (!Array.isArray(coordinates) || coordinates.length === 0) return [];
+  let ring: unknown[] = coordinates[0];
+  if (
+    Array.isArray(ring) &&
+    Array.isArray(ring[0]) &&
+    Array.isArray(ring[0][0])
+  ) {
+    ring = ring[0];
+  }
+  if (!Array.isArray(ring)) return [];
+
+  return ring.flatMap((point) => {
+    if (Array.isArray(point) && point.length >= 2) {
+      const [lng, lat] = point;
+      if (typeof lat === "number" && typeof lng === "number") {
+        return [{ lat, lng }];
+      }
+    }
+    return [];
+  });
 }
 
 export function defaultPolygonAround(center: MapLatLng, size = 0.018): MapLatLng[] {
@@ -105,12 +123,35 @@ function dummyId(prefix: string) {
   return `${prefix}_${nextId}`;
 }
 
-/** Empty until location geometry is loaded from the API. */
-const DUMMY_LOCATION_GROUPS: LocationMapGroup[] = [];
-
 export async function fetchLocationMapGroups(): Promise<LocationMapGroup[]> {
-  await new Promise((resolve) => window.setTimeout(resolve, 350));
-  return cloneLocationMapGroups(DUMMY_LOCATION_GROUPS);
+  const locations = await getLocations();
+  return locations.map((loc) => {
+    const locId = loc._id ?? loc.id ?? "";
+    const nameEn = loc.name?.en ?? "";
+    const nameAr = loc.name?.ar ?? "";
+    const subareas: LocationMapSubarea[] = (loc.subareas ?? []).map((sub) => {
+      const subId = sub._id ?? sub.id ?? "";
+      const subNameEn = sub.name?.en ?? "";
+      const subNameAr = sub.name?.ar ?? "";
+      const path = sub.geometry?.coordinates
+        ? pathFromGeoJsonPolygon(sub.geometry.coordinates)
+        : [];
+      return {
+        id: subId,
+        locationId: locId,
+        nameEn: subNameEn,
+        nameAr: subNameAr,
+        path,
+      };
+    });
+
+    return {
+      id: locId,
+      nameEn,
+      nameAr,
+      subareas,
+    };
+  });
 }
 
 export function createLocationOrSubarea(

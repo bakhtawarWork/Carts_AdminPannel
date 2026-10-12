@@ -23,8 +23,12 @@ export function useSearchCategorySections(page: number, pageSize = DEFAULT_PAGE_
       });
       setItems(response.items);
       setTotal(response.total);
-    } catch {
-      setError("Unable to load search category sections.");
+    } catch (caught) {
+      const msg =
+        caught instanceof Error
+          ? caught.message
+          : "Unable to load search category sections.";
+      setError(msg);
       setItems([]);
       setTotal(0);
     } finally {

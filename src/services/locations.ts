@@ -1,15 +1,23 @@
 import { ApiError, api } from "@/services/api";
 import { LOCATION_ENDPOINTS } from "@/services/endpoints";
 
-type LocationName = {
+export type LocationName = {
   en?: string;
   ar?: string;
+};
+
+export type LocationGeometry = {
+  type?: string;
+  coordinates?: number[][][] | number[][][][] | unknown;
 };
 
 export type LocationSubareaApiItem = {
   _id?: string;
   id?: string;
   name?: LocationName;
+  createdAt?: string;
+  updatedAt?: string;
+  geometry?: LocationGeometry;
 };
 
 export type LocationApiItem = {
@@ -22,13 +30,15 @@ export type LocationApiItem = {
 export type LocationsApiResponse = {
   status?: boolean;
   message?: string;
-  data?: {
-    locations?: LocationApiItem[];
-  };
+  data?:
+    | {
+        locations?: LocationApiItem[];
+      }
+    | LocationApiItem[];
 };
 
-/** GET /admin/locations — area names and subareas only; geometry is ignored. */
-export async function getLocations() {
+/** GET /admin/locations */
+export async function getLocations(): Promise<LocationApiItem[]> {
   const payload = await api.get<LocationsApiResponse>(LOCATION_ENDPOINTS.list);
 
   if (payload?.status === false) {
@@ -39,5 +49,15 @@ export async function getLocations() {
     );
   }
 
-  return payload.data?.locations ?? [];
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (Array.isArray(payload?.data)) {
+    return payload.data;
+  }
+  if (payload?.data && Array.isArray(payload.data.locations)) {
+    return payload.data.locations;
+  }
+
+  return [];
 }

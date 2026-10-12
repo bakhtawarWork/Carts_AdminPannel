@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createEmptySearchCategoryItem,
   createEmptySearchCategorySectionForm,
@@ -111,6 +111,37 @@ export default function SearchCategorySectionFormView({
     if (!vendorsHasMore || vendorsRequestRef.current) return;
     void loadVendorPage(vendorsPageRef.current + 1);
   }, [loadVendorPage, vendorsHasMore]);
+
+  const searchVendors = useCallback(async (searchQuery: string) => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    try {
+      const response = await fetchVendors({
+        tab: "vendors",
+        page: 1,
+        pageSize: VENDOR_PAGE_SIZE,
+        name: trimmed,
+      });
+      const mapped = response.items.map((vendor) => ({
+        id: vendor.id,
+        englishName: vendor.englishName,
+        arabicName: vendor.arabicName,
+      }));
+
+      const base = vendorsRef.current;
+      const seen = new Set(base.map((vendor) => vendor.id));
+      const next = [...base];
+      for (const vendor of mapped) {
+        if (seen.has(vendor.id)) continue;
+        seen.add(vendor.id);
+        next.push(vendor);
+      }
+      vendorsRef.current = next;
+      setVendors(next);
+    } catch {
+      // Ignore background search error
+    }
+  }, []);
 
   useEffect(() => {
     if (!sectionId) return;
@@ -226,8 +257,12 @@ export default function SearchCategorySectionFormView({
     try {
       await saveSearchCategorySectionForm(form);
       router.push("/search-categories");
-    } catch {
-      setError("Could not save search category section. Please try again.");
+    } catch (caught) {
+      const message =
+        caught instanceof Error
+          ? caught.message
+          : "Could not save search category section. Please try again.";
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -373,6 +408,7 @@ export default function SearchCategorySectionFormView({
                 vendorsError={vendorsError}
                 vendorsHasMore={vendorsHasMore}
                 onLoadMoreVendors={loadMoreVendors}
+                onSearchVendors={searchVendors}
                 canRemove={form.categories.length > 1}
                 onChange={(updater) =>
                   updateCategory(activeCategory.id, updater)
@@ -430,6 +466,7 @@ function ActiveCategoryEditor({
   vendorsError,
   vendorsHasMore,
   onLoadMoreVendors,
+  onSearchVendors,
   canRemove,
   onChange,
   onRemove,
@@ -442,11 +479,31 @@ function ActiveCategoryEditor({
   vendorsError: string | null;
   vendorsHasMore: boolean;
   onLoadMoreVendors: () => void;
+  onSearchVendors: (searchQuery: string) => void;
   canRemove: boolean;
   onChange: (updater: (category: SearchCategoryItem) => SearchCategoryItem) => void;
   onRemove: () => void;
 }) {
   const vendorListRef = useRef<HTMLUListElement>(null);
+  const [vendorSearch, setVendorSearch] = useState("");
+
+  useEffect(() => {
+    if (!vendorSearch.trim()) return;
+    const timer = setTimeout(() => {
+      onSearchVendors(vendorSearch.trim());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [vendorSearch, onSearchVendors]);
+
+  const trimmedSearch = vendorSearch.trim().toLowerCase();
+  const displayedVendors = useMemo(() => {
+    if (!trimmedSearch) return vendors;
+    return vendors.filter(
+      (vendor) =>
+        vendor.englishName.toLowerCase().includes(trimmedSearch) ||
+        vendor.arabicName.toLowerCase().includes(trimmedSearch),
+    );
+  }, [vendors, trimmedSearch]);
 
   useEffect(() => {
     const list = vendorListRef.current;
@@ -500,6 +557,7 @@ function ActiveCategoryEditor({
         ...current,
         id: current.id || createGalleryImageId(),
         imageUrl: dataUrl,
+        file,
       }));
     } catch {
       setUploadError("Could not read image file.");
@@ -629,10 +687,34 @@ function ActiveCategoryEditor({
           <p className="mt-1 text-xs text-slate-500">
             Select vendors linked to this category only.
           </p>
+
+          <div className="relative mt-2.5">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+              <SearchIcon />
+            </div>
+            <input
+              type="text"
+              value={vendorSearch}
+              onChange={(e) => setVendorSearch(e.target.value)}
+              placeholder="Search vendors by name…"
+              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-xs text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            {vendorSearch ? (
+              <button
+                type="button"
+                onClick={() => setVendorSearch("")}
+                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 transition hover:text-slate-600"
+                aria-label="Clear vendor search"
+              >
+                <ClearIcon />
+              </button>
+            ) : null}
+          </div>
+
           <ul
             ref={vendorListRef}
             onScroll={handleVendorScroll}
-            className="scrollbar-hide mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain rounded-lg border border-slate-200 bg-slate-50/50 p-1.5"
+            className="scrollbar-hide mt-2.5 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain rounded-lg border border-slate-200 bg-slate-50/50 p-1.5"
           >
             {vendorsLoading && vendors.length === 0 ? (
               <li className="px-2.5 py-3 text-sm text-slate-500">
@@ -640,12 +722,14 @@ function ActiveCategoryEditor({
               </li>
             ) : vendorsError && vendors.length === 0 ? (
               <li className="px-2.5 py-3 text-sm text-red-600">{vendorsError}</li>
-            ) : vendors.length === 0 ? (
-              <li className="px-2.5 py-3 text-sm text-slate-500">
-                No vendors found.
+            ) : displayedVendors.length === 0 ? (
+              <li className="px-2.5 py-4 text-center text-xs text-slate-500">
+                {vendorSearch.trim()
+                  ? `No vendors matching "${vendorSearch.trim()}"`
+                  : "No vendors found."}
               </li>
             ) : (
-              vendors.map((vendor) => {
+              displayedVendors.map((vendor) => {
                 const selected = category.vendorIds.includes(vendor.id);
                 return (
                   <li key={vendor.id}>
@@ -677,10 +761,15 @@ function ActiveCategoryEditor({
               <li className="px-2.5 py-2 text-xs text-red-600">{vendorsError}</li>
             ) : null}
           </ul>
-          <p className="mt-2 shrink-0 text-xs text-slate-500">
-            {category.vendorIds.length} vendor
-            {category.vendorIds.length === 1 ? "" : "s"} selected
-          </p>
+          <div className="mt-2 flex shrink-0 items-center justify-between text-xs text-slate-500">
+            <span>
+              {category.vendorIds.length} vendor
+              {category.vendorIds.length === 1 ? "" : "s"} selected
+            </span>
+            {vendorSearch.trim() && displayedVendors.length > 0 ? (
+              <span>{displayedVendors.length} matching</span>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -744,6 +833,33 @@ function DeleteIcon() {
         d="M6 6l12 12M18 6 6 18"
         stroke="currentColor"
         strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M21 21l-4.35-4.35M19 11a8 8 0 11-16 0 8 8 0 0116 0z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ClearIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6 18L18 6M6 6l12 12"
+        stroke="currentColor"
+        strokeWidth="2"
         strokeLinecap="round"
       />
     </svg>

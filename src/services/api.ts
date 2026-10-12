@@ -52,7 +52,10 @@ export async function apiRequest<T>(
   const { method = "GET", body, headers, auth = true, signal } = options;
   const requestHeaders = new Headers(headers);
 
-  if (body !== undefined && !requestHeaders.has("Content-Type")) {
+  const isFormData =
+    typeof FormData !== "undefined" && body instanceof FormData;
+
+  if (body !== undefined && !isFormData && !requestHeaders.has("Content-Type")) {
     requestHeaders.set("Content-Type", "application/json");
   }
 
@@ -68,7 +71,12 @@ export async function apiRequest<T>(
     response = await fetch(joinUrl(path), {
       method,
       headers: requestHeaders,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body:
+        body === undefined
+          ? undefined
+          : isFormData
+            ? (body as FormData)
+            : JSON.stringify(body),
       signal,
     });
   } catch {

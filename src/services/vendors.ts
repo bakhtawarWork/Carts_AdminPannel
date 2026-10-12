@@ -1,5 +1,5 @@
 import { ApiError, api } from "@/services/api";
-import { VENDOR_ENDPOINTS } from "@/services/endpoints";
+import { POLICY_ENDPOINTS, VENDOR_ENDPOINTS } from "@/services/endpoints";
 
 export type VendorSequenceApiItem = {
   _id?: string;
@@ -486,6 +486,7 @@ export type VendorDetailApiItem = {
     Array<VendorDetailImageApiItem | string> | null
   >;
   images?: Array<VendorDetailImageApiItem | string> | null;
+  logo?: VendorDetailImageApiItem | Array<VendorDetailImageApiItem | string> | null;
   logoImg?: Array<VendorDetailImageApiItem | string> | null;
   minimumNotice?: VendorDetailServiceMap<number | string | null>;
   capacity?: VendorDetailServiceMap<number | string | null>;
@@ -524,6 +525,38 @@ export async function getVendorDetails(vendorId: string) {
   }
 
   return payload.data;
+}
+
+export type DraftVendorDetailApiResponse = {
+  status?: boolean;
+  success?: boolean;
+  message?: string;
+  data?: {
+    vendor?: VendorDetailApiItem;
+  };
+};
+
+/** GET /vendors/draft/:id */
+export async function getDraftVendorDetails(id: string) {
+  const response = await api.get<DraftVendorDetailApiResponse>(
+    `${VENDOR_ENDPOINTS.draft}/${encodeURIComponent(id)}`,
+  );
+
+  if (response?.status === false || response?.success === false) {
+    throw new ApiError(
+      response.message ?? "Could not load draft vendor details.",
+      400,
+      response,
+    );
+  }
+
+  const vendor =
+    response.data?.vendor ?? (response.data as unknown as VendorDetailApiItem);
+  if (!vendor) {
+    throw new ApiError("Draft vendor not found.", 404, response);
+  }
+
+  return vendor;
 }
 
 export type UpdateVendorImageUpload = {
@@ -616,8 +649,68 @@ export async function updateVendor(id: string, payload: UpdateVendorPayload) {
   };
 }
 
+export type UpdateDraftVendorPayload = {
+  name?: { en?: string; ar?: string };
+  tagline?: { en?: string; ar?: string };
+  shortDescription?: { en?: string; ar?: string };
+  percentage?: number;
+  published?: boolean;
+  serviceCategories?: string[];
+  deliveryAreasAndCost?: Partial<
+    Record<string, Array<{ areaId: string; fees: number }>>
+  >;
+  minimumNotice?: Partial<Record<string, number | null>>;
+  capacity?: Partial<Record<string, number | null>>;
+  contactInfo?: {
+    primaryEmail?: string;
+    secondaryEmail?: string;
+    accountingEmails?: string[];
+    mobile?: string;
+    phone?: string;
+  };
+  vendorimages?: Partial<Record<string, CreateVendorImagePayload[]>>;
+  logoImg?: CreateVendorImagePayload[];
+  [key: string]: unknown;
+};
+
+export type UpdateDraftVendorApiResponse = {
+  status?: boolean;
+  success?: boolean;
+  message?: string;
+  data?: {
+    vendor?: VendorDetailApiItem;
+    _id?: string;
+  };
+};
+
+/** PUT /vendors/draft/:id */
+export async function updateDraftVendor(
+  id: string,
+  payload: UpdateDraftVendorPayload,
+) {
+  const response = await api.put<UpdateDraftVendorApiResponse>(
+    `${VENDOR_ENDPOINTS.draft}/${encodeURIComponent(id)}`,
+    payload,
+  );
+
+  if (response?.status === false || response?.success === false) {
+    throw new ApiError(
+      response.message ?? "Could not update draft vendor.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    id: response.data?._id ?? response.data?.vendor?._id ?? id,
+    message: response.message?.trim() || "Draft vendor updated successfully",
+    data: response.data,
+  };
+}
+
 export type DeleteVendorApiResponse = {
   status?: boolean;
+  success?: boolean;
   message?: string;
   data?: {
     _id?: string;
@@ -647,6 +740,27 @@ export async function deleteVendor(id: string) {
   };
 }
 
+/** DELETE /vendors/draft/:id */
+export async function deleteDraftVendor(id: string) {
+  const response = await api.delete<DeleteVendorApiResponse>(
+    `${VENDOR_ENDPOINTS.draft}/${encodeURIComponent(id)}`,
+  );
+
+  if (response?.status === false || response?.success === false) {
+    throw new ApiError(
+      response.message ?? "Could not delete draft vendor.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    id: response.data?._id ?? response.data?.id ?? id,
+    message: response.message?.trim() || "Draft vendor deleted successfully",
+    data: response.data,
+  };
+}
+
 export type VendorPolicyApiItem = {
   _id?: string;
   policy?: {
@@ -659,21 +773,44 @@ export type VendorPolicyApiResponse = {
   status?: boolean;
   message?: string;
   result?: VendorPolicyApiItem;
-  data?: VendorPolicyApiItem | { result?: VendorPolicyApiItem };
+  data?:
+    | VendorPolicyApiItem
+    | { result?: VendorPolicyApiItem }
+    | { policy?: VendorPolicyApiItem | { en?: string; ar?: string } };
 };
 
-function vendorPolicyFromPayload(payload: VendorPolicyApiResponse) {
+function vendorPolicyFromPayload(
+  payload: VendorPolicyApiResponse,
+): VendorPolicyApiItem | null {
   if (payload.result?.policy) return payload.result;
 
   const data = payload.data;
   if (!data) return null;
-  if ("policy" in data && data.policy) return data;
+
+  if ("policy" in data && data.policy) {
+    const p = data.policy as Record<string, unknown>;
+    if (p.policy && typeof p.policy === "object") {
+      const dataRecord = data as Record<string, unknown>;
+      const id =
+        typeof p._id === "string"
+          ? p._id
+          : typeof dataRecord._id === "string"
+            ? dataRecord._id
+            : undefined;
+      return {
+        _id: id,
+        policy: p.policy as { en?: string; ar?: string },
+      };
+    }
+    return data as VendorPolicyApiItem;
+  }
+
   if ("result" in data && data.result?.policy) return data.result;
   return null;
 }
 
 /** GET /admin/vendors/policy */
-export async function getVendorPolicy() {
+export async function getVendorPolicy(): Promise<VendorPolicyApiItem> {
   const payload = await api.get<VendorPolicyApiResponse>(VENDOR_ENDPOINTS.policy);
 
   if (payload?.status === false) {
@@ -694,6 +831,109 @@ export async function getVendorPolicy() {
   }
 
   return policy;
+}
+
+export type UpdatePolicyPayload = {
+  policyPayload: {
+    en: string;
+    ar: string;
+  };
+};
+
+export type UpdatePolicyApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    policy?:
+      | {
+          policy?: {
+            en?: string;
+            ar?: string;
+          };
+          _id?: string;
+          [key: string]: unknown;
+        }
+      | {
+          en?: string;
+          ar?: string;
+          _id?: string;
+          [key: string]: unknown;
+        };
+    [key: string]: unknown;
+  };
+};
+
+function extractUpdatedPolicy(
+  payload: UpdatePolicyApiResponse,
+): { en: string; ar: string } | null {
+  const data = payload?.data;
+  if (!data) return null;
+
+  const policyContainer = data.policy as Record<string, unknown> | undefined;
+  if (!policyContainer) return null;
+
+  const nested = policyContainer.policy as Record<string, unknown> | undefined;
+  if (
+    nested &&
+    (typeof nested.en === "string" || typeof nested.ar === "string")
+  ) {
+    return {
+      en: typeof nested.en === "string" ? nested.en : "",
+      ar: typeof nested.ar === "string" ? nested.ar : "",
+    };
+  }
+
+  if (
+    typeof policyContainer.en === "string" ||
+    typeof policyContainer.ar === "string"
+  ) {
+    return {
+      en: typeof policyContainer.en === "string" ? policyContainer.en : "",
+      ar: typeof policyContainer.ar === "string" ? policyContainer.ar : "",
+    };
+  }
+
+  return null;
+}
+
+/**
+ * PUT/POST /admin/policies/update
+ * Updates bilingual vendor policy
+ */
+export async function updateVendorPolicy(payload: UpdatePolicyPayload) {
+  let response: UpdatePolicyApiResponse;
+  try {
+    response = await api.put<UpdatePolicyApiResponse>(
+      POLICY_ENDPOINTS.update,
+      payload,
+    );
+  } catch (err) {
+    if (
+      err instanceof ApiError &&
+      (err.status === 404 || err.status === 405)
+    ) {
+      response = await api.post<UpdatePolicyApiResponse>(
+        POLICY_ENDPOINTS.update,
+        payload,
+      );
+    } else {
+      throw err;
+    }
+  }
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not update vendor policy.",
+      400,
+      response,
+    );
+  }
+
+  return {
+    message: response.message || "Vendor policy updated successfully",
+    policy: extractUpdatedPolicy(response),
+    raw: response,
+  };
 }
 
 export async function getVendors(query: VendorListQueryParams) {

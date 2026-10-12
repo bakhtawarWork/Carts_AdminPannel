@@ -43,8 +43,10 @@ export default function PopularCollectionDetailView({
     try {
       await deletePopularCollection(collectionId);
       router.push(routes.listHref);
-    } catch {
-      setActionError("Could not delete collection.");
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not delete collection.",
+      );
       setBusy(false);
     }
   }
@@ -58,8 +60,10 @@ export default function PopularCollectionDetailView({
       setMessage(`"${deleteSub.englishName}" was deleted.`);
       setDeleteSub(null);
       reload();
-    } catch {
-      setActionError("Could not delete sub-collection.");
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not delete sub-collection.",
+      );
     } finally {
       setBusy(false);
     }

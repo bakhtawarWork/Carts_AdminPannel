@@ -1,4 +1,4 @@
-import PopularSubCollectionFormView from "@/components/popular-collections/PopularSubCollectionFormView";
+import CollectionItemFormView from "@/components/collections/CollectionItemFormView";
 
 type NewSubCollectionPageProps = {
   params: Promise<{ id: string }>;
@@ -8,7 +8,5 @@ export default async function NewSubCollectionPage({
   params,
 }: NewSubCollectionPageProps) {
   const { id } = await params;
-  return (
-    <PopularSubCollectionFormView collectionId={id} section="collections" />
-  );
+  return <CollectionItemFormView collectionId={id} />;
 }

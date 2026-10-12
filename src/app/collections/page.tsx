@@ -1,5 +1,5 @@
-import PopularCollectionsView from "@/components/popular-collections/PopularCollectionsView";
+import CollectionsView from "@/components/collections/CollectionsView";
 
 export default function CollectionsPage() {
-  return <PopularCollectionsView section="collections" />;
+  return <CollectionsView />;
 }

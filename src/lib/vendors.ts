@@ -1,5 +1,6 @@
 import type { VendorRecord, VendorsQuery, VendorsResponse } from "@/lib/types";
 import {
+  deleteDraftVendor,
   deleteVendor,
   getDraftVendors,
   getVendors,
@@ -96,8 +97,8 @@ export function getVendorById(id: string) {
   return vendorCache.get(id) ?? null;
 }
 
-export async function removeVendor(id: string) {
-  const result = await deleteVendor(id);
+export async function removeVendor(id: string, isDraft = false) {
+  const result = isDraft ? await deleteDraftVendor(id) : await deleteVendor(id);
   vendorCache.delete(id);
   invalidateVendorFilterOptionsCache();
   return result;

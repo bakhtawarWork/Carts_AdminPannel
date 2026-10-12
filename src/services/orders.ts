@@ -186,3 +186,37 @@ export async function getOrderDetails(orderId: string) {
 
   return payload.data;
 }
+
+export type CancelOrderPayload = {
+  isApproved?: boolean;
+};
+
+export type CancelOrderApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    order?: unknown;
+  };
+};
+
+/** POST /admin/orders/:id/cancel */
+export async function cancelOrderByAdmin(
+  orderId: string | number,
+  payload: CancelOrderPayload = { isApproved: true },
+) {
+  const data = await api.post<CancelOrderApiResponse>(
+    ORDER_ENDPOINTS.cancel(orderId),
+    payload,
+  );
+
+  if (data?.status === false) {
+    throw new ApiError(
+      data.message ?? "Could not cancel order.",
+      400,
+      data,
+    );
+  }
+
+  return data;
+}
+

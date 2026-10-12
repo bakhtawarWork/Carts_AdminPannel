@@ -9,14 +9,23 @@ import type {
   OrderStatus,
 } from "@/lib/types";
 import {
+  cancelOrderByAdmin,
   getOrderDetails,
   getOrders,
+  type CancelOrderApiResponse,
+  type CancelOrderPayload,
   type OrderDetailApiCancelationRequest,
   type OrderDetailApiData,
   type OrderDetailApiHistoryItem,
   type OrderListApiItem,
   type OrdersListQueryParams,
 } from "@/services/orders";
+
+export {
+  cancelOrderByAdmin,
+  type CancelOrderApiResponse,
+  type CancelOrderPayload,
+};
 
 const DEFAULT_CURRENCY = "QAR";
 

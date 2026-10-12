@@ -42,8 +42,10 @@ export default function PopularCollectionsView({
       setMessage(`"${deleteTarget.englishName}" was deleted.`);
       setDeleteTarget(null);
       await reload();
-    } catch {
-      setActionError("Could not delete collection.");
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not delete collection.",
+      );
     } finally {
       setDeleting(false);
     }

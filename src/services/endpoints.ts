@@ -23,6 +23,7 @@ export const VENDOR_ENDPOINTS = {
   filters: "vendors/filters",
   reviews: "vendors/reviews",
   policy: "vendors/policy",
+  policyUpdate: "policies/update",
   registrations: "vendors/registrations",
 } as const;
 
@@ -33,6 +34,7 @@ export const LOCATION_ENDPOINTS = {
 export const ORDER_ENDPOINTS = {
   list: "orders",
   details: "orders/orderDetails",
+  cancel: (id: string | number) => `orders/${id}/cancel`,
 } as const;
 
 export const PROMO_CODE_ENDPOINTS = {
@@ -52,4 +54,65 @@ export const BANNER_ENDPOINTS = {
   delete: (id: string) => `banners/${id}`,
   dashboard: "banners/dashboard",
 } as const;
+
+export const COLLECTION_ENDPOINTS = {
+  list: "collections",
+  create: "collections",
+  update: (id: string) => `collections/${id}`,
+  delete: (id: string) => `collections/${id}`,
+  addItem: (id: string) => `collections/${id}`,
+  getItem: (id: string) => `collections/get-item/${id}`,
+  updateItem: (id: string) => `collections/set-item/${id}`,
+  deleteItem: (id: string) => `collections/item/${id}`,
+  sortedOfferings: "collections/sorted-offerings",
+  searchOfferings: (key: string) =>
+    `collections/search-offerings/${encodeURIComponent(key)}`,
+} as const;
+
+export const SEARCH_CATEGORY_ENDPOINTS = {
+  list: "search-categories",
+  create: "search-categories",
+  details: (id: string) => `search-categories/${id}`,
+  update: (id: string) => `search-categories/${id}`,
+  delete: (id: string) => `search-categories/${id}`,
+} as const;
+
+export const POLICY_ENDPOINTS = {
+  update: "policies/update",
+} as const;
+
+export const POPULAR_COLLECTION_ENDPOINTS = {
+  list: "popular-collections",
+  create: "popular-collections",
+  details: (id: string) => `popular-collections/${id}`,
+  update: (id: string) => `popular-collections/${id}`,
+  delete: (id: string) => `popular-collections/${id}`,
+  subcollections: (id: string) => `popular-collections/${id}/subcollection`,
+  createSubcollection: (id: string) => `popular-collections/${id}/subcollection`,
+  subcollectionData: (id: string, subId: string) =>
+    `popular-collections/${id}/subcollection/${subId}`,
+  subcollectionDetails: (id: string, subId: string) =>
+    `popular-collections/${id}/subcollection/details/${subId}`,
+  updateSubcollection: (id: string, subId: string) =>
+    `popular-collections/${id}/subcollection/${subId}`,
+  deleteSubcollection: (id: string, subId: string) =>
+    `popular-collections/${id}/subcollection/${subId}`,
+  subcollectionItems: (id: string, subId: string, type: string) =>
+    `popular-collections/${id}/subcollection/${subId}/items/${type}`,
+  addSubcollectionItems: (id: string, subId: string) =>
+    `popular-collections/${id}/subcollection/${subId}/items`,
+  updateSubcollectionItem: (
+    id: string,
+    subId: string,
+    type: string,
+    itemId: string,
+  ) => `popular-collections/${id}/subcollection/${subId}/items/${type}/${itemId}`,
+  deleteSubcollectionItem: (
+    id: string,
+    subId: string,
+    type: string,
+    itemId: string,
+  ) => `popular-collections/${id}/subcollection/${subId}/items/${type}/${itemId}`,
+} as const;
+
 

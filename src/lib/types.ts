@@ -97,6 +97,7 @@ export type PopularCollection = {
   popular: boolean;
   serviceCategoryId: string;
   imageUrl: string;
+  order?: number;
   subCollections: PopularSubCollection[];
 };
 
@@ -106,6 +107,7 @@ export type PopularSubCollection = {
   englishName: string;
   arabicName: string;
   published: boolean;
+  order?: number;
 };
 
 export type PopularCollectionFormData = {
@@ -116,6 +118,8 @@ export type PopularCollectionFormData = {
   popular: boolean;
   serviceCategoryId: string;
   imageUrl: string;
+  imageFile?: File | null;
+  order?: number;
 };
 
 export type PopularSubCollectionFormData = {
@@ -124,6 +128,7 @@ export type PopularSubCollectionFormData = {
   englishName: string;
   arabicName: string;
   published: boolean;
+  order?: number;
 };
 
 export type PopularCollectionServiceOption = {
@@ -429,6 +434,13 @@ export type SearchCategoryItem = {
   published: boolean;
   imageUrl: string;
   vendorIds: string[];
+  file?: File;
+  images?: Array<{
+    key?: string;
+    url?: string;
+    cdnUrl?: string;
+    filename?: string;
+  }>;
 };
 
 export type SearchCategorySectionFormData = {
@@ -448,6 +460,8 @@ export type SearchCategoryVendorOption = {
 export type SearchCategorySectionsQuery = {
   page: number;
   pageSize: number;
+  search?: string;
+  published?: boolean;
 };
 
 export type SearchCategorySectionsResponse = {
@@ -796,6 +810,7 @@ export type VendorServiceFields = {
 
 export type VendorFormData = {
   id?: string;
+  isDraft?: boolean;
   englishName: string;
   englishTagline: string;
   englishShortDescription: string;

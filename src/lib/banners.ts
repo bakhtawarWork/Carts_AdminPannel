@@ -45,6 +45,36 @@ export function mapApiBannerToRecord(item: BannerApiItem): BannerRecord {
     item.image?.url ||
     (typeof item.image === "string" ? item.image : "");
 
+  let redirectionPath: string | undefined = undefined;
+  if (typeof item.destination === "string") {
+    const trimmed = item.destination.trim();
+    if (trimmed) redirectionPath = trimmed;
+  } else if (item.destination && typeof item.destination === "object") {
+    const d = item.destination as Record<string, unknown>;
+    const val =
+      (typeof d.destination === "string" && d.destination) ||
+      (typeof d.url === "string" && d.url) ||
+      (typeof d.path === "string" && d.path) ||
+      (typeof d.id === "string" && d.id) ||
+      (typeof d._id === "string" && d._id);
+    if (val && typeof val === "string") {
+      redirectionPath = val.trim();
+    }
+  } else if (item.destination != null) {
+    const str = String(item.destination).trim();
+    if (str && str !== "[object Object]") {
+      redirectionPath = str;
+    }
+  }
+
+  if (!redirectionPath && item.referenceId) {
+    if (item.actionType === "vendor") {
+      redirectionPath = `vendors/${item.referenceId}`;
+    } else if (item.actionType === "offering") {
+      redirectionPath = `offerings/${item.referenceId}`;
+    }
+  }
+
   return {
     id: item._id,
     type: item.type,
@@ -53,7 +83,7 @@ export function mapApiBannerToRecord(item: BannerApiItem): BannerRecord {
     imageUrl,
     sequence: item.position ?? 1,
     isActive: item.status === "active",
-    redirectionPath: item.destination || undefined,
+    redirectionPath,
     actionType: item.actionType,
     referenceId: item.referenceId,
     createdAt: item.createdAt || new Date().toISOString(),
@@ -139,16 +169,38 @@ export function formatBannerTypeLabel(type: BannerType) {
   return type === "main" ? "Main banner" : "Sub banner";
 }
 
-export function formatBannerRedirectionLabel(path?: string) {
+export function formatBannerRedirectionLabel(path?: unknown): string {
   if (!path) return "—";
-  if (path === "vendor_details" || path.startsWith("vendors/")) {
+
+  let str = "";
+  if (typeof path === "string") {
+    str = path.trim();
+  } else if (typeof path === "object" && path !== null) {
+    const obj = path as Record<string, unknown>;
+    const val =
+      (typeof obj.destination === "string" && obj.destination) ||
+      (typeof obj.url === "string" && obj.url) ||
+      (typeof obj.path === "string" && obj.path) ||
+      (typeof obj.label === "string" && obj.label) ||
+      (typeof obj.name === "string" && obj.name) ||
+      (typeof obj.id === "string" && obj.id) ||
+      (typeof obj._id === "string" && obj._id);
+    str = val ? val.trim() : "";
+  } else {
+    str = String(path).trim();
+    if (str === "[object Object]") str = "";
+  }
+
+  if (!str) return "—";
+
+  if (str === "vendor_details" || str.startsWith("vendors/")) {
     return "Vendor details";
   }
-  if (path === "offerings_details" || path.startsWith("offerings/")) {
+  if (str === "offerings_details" || str.startsWith("offerings/")) {
     return "Offering details";
   }
-  const match = BANNER_REDIRECTION_OPTIONS.find((option) => option.value === path);
-  return match?.label ?? path;
+  const match = BANNER_REDIRECTION_OPTIONS.find((option) => option.value === str);
+  return match?.label ?? str;
 }
 
 export function validateBannerForm(data: BannerFormData): string | null {
@@ -263,6 +315,7 @@ export async function updateBannerForm(
       en: englishName,
       ar: arabicName,
     },
+    type: data.type,
     position: Number(data.sequence) || 1,
     status: data.isActive ? "active" : "inactive",
   };
@@ -279,6 +332,10 @@ export async function updateBannerForm(
     } else if (data.redirectionPath?.trim()) {
       payload.destination = data.redirectionPath.trim();
     }
+  } else {
+    payload.destination = "";
+    payload.actionType = "";
+    payload.referenceId = null;
   }
 
   if (data.imageUrl.startsWith("data:")) {

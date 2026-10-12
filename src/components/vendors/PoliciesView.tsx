@@ -9,6 +9,7 @@ import {
   policyStatusLabel,
   publishPolicy,
   savePolicyDraft,
+  updatePolicy,
 } from "@/lib/policies";
 import type { PolicyDocument, PolicyVersion } from "@/lib/types";
 
@@ -100,6 +101,11 @@ export default function PoliciesView() {
   }
 
   async function handleSaveDraft() {
+    if (!englishContent.trim() && !arabicContent.trim()) {
+      setError("Please enter policy content before saving.");
+      return;
+    }
+
     setSaving("draft");
     setError(null);
     setMessage(null);
@@ -110,9 +116,11 @@ export default function PoliciesView() {
       setArabicContent(saved.arabicContent);
       const versionData = await fetchPolicyVersions();
       setVersions(versionData);
-      setMessage("Draft saved.");
-    } catch {
-      setError("Could not save draft.");
+      setMessage(saved.message || "Vendor policy updated successfully.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not update policy.",
+      );
     } finally {
       setSaving(null);
     }
@@ -120,7 +128,7 @@ export default function PoliciesView() {
 
   async function handlePublish() {
     if (!englishContent.trim() || !arabicContent.trim()) {
-      setError("Both English and Arabic policies are required before publishing.");
+      setError("Both English and Arabic policies are required before updating.");
       return;
     }
     if (englishCount > POLICY_CHAR_LIMIT || arabicCount > POLICY_CHAR_LIMIT) {
@@ -138,9 +146,11 @@ export default function PoliciesView() {
       setArabicContent(saved.arabicContent);
       const versionData = await fetchPolicyVersions();
       setVersions(versionData);
-      setMessage("Policy published to users.");
-    } catch {
-      setError("Could not publish policy.");
+      setMessage(saved.message || "Vendor policy updated successfully.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not update policy.",
+      );
     } finally {
       setSaving(null);
     }
@@ -312,11 +322,7 @@ export default function PoliciesView() {
 
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-500">
-          {policy?.status === "published"
-            ? "Publishing will replace the live policy users see in the app."
-            : policy?.status === "draft"
-              ? "This policy is currently a draft and not visible to users."
-              : "This is the current vendor policy."}
+          Updating will update the live vendor policy users see in the app.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -333,7 +339,7 @@ export default function PoliciesView() {
             disabled={saving !== null}
             className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving === "publish" ? "Publishing…" : "Publish to users"}
+            {saving === "publish" ? "Updating…" : "Update Policy"}
           </button>
         </div>
       </div>

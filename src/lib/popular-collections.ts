@@ -1,3 +1,16 @@
+import {
+  createPopularCollectionApi,
+  createSubCollectionApi,
+  deletePopularCollectionApi,
+  deleteSubCollectionApi,
+  getPopularCollectionByIdApi,
+  getPopularCollectionsApi,
+  getSubCollectionsApi,
+  updatePopularCollectionApi,
+  updateSubCollectionApi,
+  type ApiPopularCollection,
+  type ApiPopularSubCollection,
+} from "@/services/popular-collections";
 import type {
   PopularCollection,
   PopularCollectionFormData,
@@ -15,21 +28,100 @@ export const POPULAR_COLLECTION_SERVICE_OPTIONS: PopularCollectionServiceOption[
     { id: "feasts", englishName: "Feasts", arabicName: "ولائم" },
   ];
 
-function cloneCollection(collection: PopularCollection): PopularCollection {
+function dataUrlToFile(dataUrl: string, filename = "collection.jpg"): File | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const parts = dataUrl.split(",");
+    if (parts.length < 2) return null;
+    const match = parts[0].match(/:(.*?);/);
+    const mime = match ? match[1] : "image/jpeg";
+    const binary = atob(parts[1]);
+    const array = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      array[i] = binary.charCodeAt(i);
+    }
+    return new File([array], filename, { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+export function mapApiCollectionToFrontend(
+  apiItem: ApiPopularCollection,
+): PopularCollection {
+  const nameObj =
+    typeof apiItem.name === "object" && apiItem.name !== null
+      ? apiItem.name
+      : null;
+  const englishName =
+    nameObj?.en ??
+    (typeof apiItem.name === "string" ? apiItem.name : "") ??
+    "";
+  const arabicName = nameObj?.ar ?? "";
+
+  let imageUrl = "";
+  if (typeof apiItem.image === "string") {
+    imageUrl = apiItem.image;
+  } else if (apiItem.image && typeof apiItem.image === "object") {
+    imageUrl =
+      apiItem.image.cdnUrl ||
+      apiItem.image.url ||
+      apiItem.image.filename ||
+      "";
+  }
+
+  const subCollections: PopularSubCollection[] = Array.isArray(
+    apiItem.subCollections,
+  )
+    ? apiItem.subCollections.map((sub) => {
+        const subNameObj =
+          typeof sub.name === "object" && sub.name !== null
+            ? sub.name
+            : null;
+        return {
+          id: sub._id || (sub as unknown as { id?: string }).id || "",
+          collectionId: apiItem._id || "",
+          englishName:
+            subNameObj?.en ??
+            (typeof sub.name === "string" ? sub.name : "") ??
+            "",
+          arabicName: subNameObj?.ar ?? "",
+          published: Boolean(sub.published),
+          order: sub.order,
+        };
+      })
+    : [];
+
   return {
-    ...collection,
-    subCollections: collection.subCollections.map((sub) => ({ ...sub })),
+    id: apiItem._id || (apiItem as unknown as { id?: string }).id || "",
+    englishName,
+    arabicName,
+    published: Boolean(apiItem.published),
+    popular: Boolean(apiItem.isPopular),
+    serviceCategoryId: apiItem.legacyServiceCategory ?? "",
+    imageUrl,
+    order: apiItem.order,
+    subCollections,
   };
 }
 
-let collectionsStore: PopularCollection[] = [];
-
-function delay(ms = 240) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function createId(prefix: string) {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+export function mapApiSubCollectionToFrontend(
+  sub: ApiPopularSubCollection,
+  collectionId: string,
+): PopularSubCollection {
+  const subNameObj =
+    typeof sub.name === "object" && sub.name !== null ? sub.name : null;
+  return {
+    id: sub._id || (sub as unknown as { id?: string }).id || "",
+    collectionId,
+    englishName:
+      subNameObj?.en ??
+      (typeof sub.name === "string" ? sub.name : "") ??
+      "",
+    arabicName: subNameObj?.ar ?? "",
+    published: Boolean(sub.published),
+    order: sub.order,
+  };
 }
 
 export function getServiceCategoryLabel(id: string) {
@@ -47,6 +139,7 @@ export function createEmptyCollectionForm(): PopularCollectionFormData {
     popular: false,
     serviceCategoryId: "",
     imageUrl: "",
+    imageFile: null,
   };
 }
 
@@ -61,6 +154,8 @@ export function collectionToFormData(
     popular: collection.popular,
     serviceCategoryId: collection.serviceCategoryId,
     imageUrl: collection.imageUrl,
+    imageFile: null,
+    order: collection.order,
   };
 }
 
@@ -84,6 +179,7 @@ export function subCollectionToFormData(
     englishName: sub.englishName,
     arabicName: sub.arabicName,
     published: sub.published,
+    order: sub.order,
   };
 }
 
@@ -91,7 +187,7 @@ export function validateCollectionForm(form: PopularCollectionFormData) {
   if (!form.englishName.trim()) return "English name is required.";
   if (!form.arabicName.trim()) return "Arabic name is required.";
   if (!form.serviceCategoryId) return "Select a service category.";
-  if (!form.imageUrl.trim()) return "Select an image.";
+  if (!form.imageUrl.trim() && !form.imageFile) return "Select an image.";
   return null;
 }
 
@@ -101,98 +197,121 @@ export function validateSubCollectionForm(form: PopularSubCollectionFormData) {
   return null;
 }
 
+/**
+ * Fetch all popular collections from backend API
+ */
 export async function fetchPopularCollections(): Promise<PopularCollection[]> {
-  await delay();
-  return collectionsStore.map(cloneCollection);
+  const result = await getPopularCollectionsApi({ limit: 100 });
+  return result.collections.map(mapApiCollectionToFrontend);
 }
 
+/**
+ * Fetch popular collection by ID, with sub-collections
+ */
 export async function fetchPopularCollectionById(
   id: string,
 ): Promise<PopularCollection | null> {
-  await delay();
-  const collection = collectionsStore.find((entry) => entry.id === id);
-  return collection ? cloneCollection(collection) : null;
+  const apiItem = await getPopularCollectionByIdApi(id);
+  if (!apiItem) return null;
+
+  const frontend = mapApiCollectionToFrontend(apiItem);
+
+  // If subcollections were not populated on the main item, fetch them explicitly
+  if (!frontend.subCollections || frontend.subCollections.length === 0) {
+    try {
+      const subs = await getSubCollectionsApi(id);
+      if (subs && subs.length > 0) {
+        frontend.subCollections = subs.map((s) =>
+          mapApiSubCollectionToFrontend(s, id),
+        );
+      }
+    } catch {
+      // ignore fallback error
+    }
+  }
+
+  return frontend;
 }
 
+/**
+ * Create or update popular collection via multipart/form-data
+ */
 export async function savePopularCollectionForm(
   form: PopularCollectionFormData,
 ): Promise<PopularCollection> {
-  await delay(280);
+  const formData = new FormData();
+  formData.append("name.en", form.englishName.trim());
+  formData.append("name.ar", form.arabicName.trim());
+  formData.append("published", String(form.published));
+  formData.append("isPopular", String(form.popular));
 
-  const existing = collectionsStore.find((entry) => entry.id === form.id);
-  const collection: PopularCollection = {
-    id: form.id ?? createId("pc"),
-    englishName: form.englishName.trim(),
-    arabicName: form.arabicName.trim(),
-    published: form.published,
-    popular: form.popular,
-    serviceCategoryId: form.serviceCategoryId,
-    imageUrl: form.imageUrl.trim(),
-    subCollections: existing?.subCollections.map((sub) => ({ ...sub })) ?? [],
-  };
-
-  if (existing) {
-    collectionsStore = collectionsStore.map((entry) =>
-      entry.id === collection.id ? collection : entry,
-    );
-  } else {
-    collectionsStore = [...collectionsStore, collection];
+  if (form.serviceCategoryId) {
+    formData.append("legacyServiceCategory", form.serviceCategoryId);
   }
 
-  return cloneCollection(collection);
+  if (form.order !== undefined) {
+    formData.append("order", String(form.order));
+  }
+
+  let fileToUpload: File | Blob | null = form.imageFile ?? null;
+  if (!fileToUpload && form.imageUrl?.startsWith("data:")) {
+    fileToUpload = dataUrlToFile(form.imageUrl, "collection.jpg");
+  }
+
+  if (fileToUpload) {
+    formData.append("file", fileToUpload);
+  }
+
+  if (form.id) {
+    const updated = await updatePopularCollectionApi(form.id, formData);
+    return mapApiCollectionToFrontend(updated);
+  } else {
+    const created = await createPopularCollectionApi(formData);
+    return mapApiCollectionToFrontend(created);
+  }
 }
 
+/**
+ * Delete popular collection by ID
+ */
 export async function deletePopularCollection(id: string): Promise<boolean> {
-  await delay(200);
-  const before = collectionsStore.length;
-  collectionsStore = collectionsStore.filter((entry) => entry.id !== id);
-  return collectionsStore.length < before;
+  return await deletePopularCollectionApi(id);
 }
 
+/**
+ * Create or update popular sub-collection via JSON
+ */
 export async function savePopularSubCollectionForm(
   form: PopularSubCollectionFormData,
 ): Promise<PopularSubCollection> {
-  await delay(280);
-
-  const parent = collectionsStore.find(
-    (entry) => entry.id === form.collectionId,
-  );
-  if (!parent) {
-    throw new Error("Collection not found.");
-  }
-
-  const sub: PopularSubCollection = {
-    id: form.id ?? createId("psc"),
-    collectionId: parent.id,
-    englishName: form.englishName.trim(),
-    arabicName: form.arabicName.trim(),
+  const payload = {
+    name: {
+      en: form.englishName.trim(),
+      ar: form.arabicName.trim(),
+    },
     published: form.published,
+    order: form.order ?? 1,
   };
 
-  const exists = parent.subCollections.some((entry) => entry.id === sub.id);
-  const nextSubs = exists
-    ? parent.subCollections.map((entry) => (entry.id === sub.id ? sub : entry))
-    : [...parent.subCollections, sub];
-
-  collectionsStore = collectionsStore.map((entry) =>
-    entry.id === parent.id ? { ...entry, subCollections: nextSubs } : entry,
-  );
-
-  return { ...sub };
+  if (form.id) {
+    const updated = await updateSubCollectionApi(
+      form.collectionId,
+      form.id,
+      payload,
+    );
+    return mapApiSubCollectionToFrontend(updated, form.collectionId);
+  } else {
+    const created = await createSubCollectionApi(form.collectionId, payload);
+    return mapApiSubCollectionToFrontend(created, form.collectionId);
+  }
 }
 
+/**
+ * Delete popular sub-collection by ID
+ */
 export async function deletePopularSubCollection(
   collectionId: string,
   subId: string,
 ): Promise<boolean> {
-  await delay(200);
-  const parent = collectionsStore.find((entry) => entry.id === collectionId);
-  if (!parent) return false;
-
-  const before = parent.subCollections.length;
-  const nextSubs = parent.subCollections.filter((entry) => entry.id !== subId);
-  collectionsStore = collectionsStore.map((entry) =>
-    entry.id === collectionId ? { ...entry, subCollections: nextSubs } : entry,
-  );
-  return nextSubs.length < before;
+  return await deleteSubCollectionApi(collectionId, subId);
 }

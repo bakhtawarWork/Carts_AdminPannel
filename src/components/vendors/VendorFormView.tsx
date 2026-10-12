@@ -61,9 +61,13 @@ const PANELS: {
 
 type VendorFormViewProps = {
   vendorId?: string;
+  isDraft?: boolean;
 };
 
-export default function VendorFormView({ vendorId }: VendorFormViewProps) {
+export default function VendorFormView({
+  vendorId,
+  isDraft,
+}: VendorFormViewProps) {
   const router = useRouter();
   const isEdit = Boolean(vendorId);
   const [form, setForm] = useState<VendorFormData>(createEmptyVendorForm);
@@ -117,7 +121,7 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchVendorForm(vendorId);
+        const data = await fetchVendorForm(vendorId, isDraft);
         if (cancelled) return;
         if (!data) {
           setError("Vendor not found.");
@@ -142,7 +146,7 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [vendorId]);
+  }, [vendorId, isDraft]);
 
   function clearFieldError(key: keyof VendorFormFieldErrors) {
     setFieldErrors((prev) => {
@@ -468,7 +472,11 @@ export default function VendorFormView({ vendorId }: VendorFormViewProps) {
             Vendor workspace
           </p>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            {isEdit ? "Edit Vendor" : "Add Vendor"}
+            {isEdit
+              ? form.isDraft
+                ? "Edit Draft Vendor"
+                : "Edit Vendor"
+              : "Add Vendor"}
           </h1>
         </div>
         <Link

@@ -53,8 +53,10 @@ export default function SearchCategorySectionsView() {
       const nextPage = items.length === 1 && page > 1 ? page - 1 : page;
       setPage(nextPage);
       await reload(nextPage);
-    } catch {
-      setActionError("Could not delete section.");
+    } catch (caught) {
+      const msg =
+        caught instanceof Error ? caught.message : "Could not delete section.";
+      setActionError(msg);
     } finally {
       setSaving(false);
     }

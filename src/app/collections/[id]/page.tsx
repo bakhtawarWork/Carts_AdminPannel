@@ -1,4 +1,4 @@
-import PopularCollectionDetailView from "@/components/popular-collections/PopularCollectionDetailView";
+import { redirect } from "next/navigation";
 
 type CollectionDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -7,6 +7,6 @@ type CollectionDetailPageProps = {
 export default async function CollectionDetailPage({
   params,
 }: CollectionDetailPageProps) {
-  const { id } = await params;
-  return <PopularCollectionDetailView collectionId={id} section="collections" />;
+  await params;
+  redirect("/collections");
 }

@@ -1,4 +1,5 @@
 import { FILTER_CATALOG } from "@/lib/vendor-filters-data";
+import { api } from "@/services/api";
 import type {
   BilingualLabel,
   FilterCategory,
@@ -130,16 +131,69 @@ function formDataToCategory(form: FilterTypeFormData): FilterCategory {
   };
 }
 
-/** Swap for: `const res = await fetch("/api/filter-types"); return mapBackendFilterResponse(await res.json());` */
 export async function fetchFilterTypes(): Promise<FilterCategory[]> {
-  await delay();
-  return getFilterCatalog();
+  try {
+    const json = await api.get<any>("filter-type");
+    const rawList =
+      json?.data?.filter ||
+      json?.filter ||
+      (Array.isArray(json?.data) ? json.data : []) ||
+      (Array.isArray(json) ? json : []);
+
+    const mapped: FilterCategory[] = rawList.map((category: any) => ({
+      id: category._id || category.id || "",
+      name: {
+        en: category.name?.en?.trim() || "",
+        ar: category.name?.ar?.trim() || "",
+      },
+      subTypes: Array.isArray(category.subTypes)
+        ? category.subTypes.map((st: any) => ({
+            id: st._id || st.id || "",
+            name: {
+              en: st.name?.en?.trim() || "",
+              ar: st.name?.ar?.trim() || "",
+            },
+          }))
+        : [],
+    }));
+
+    if (mapped.length > 0) {
+      filterTypesStore = deepCloneCatalog(mapped);
+    }
+    return mapped;
+  } catch {
+    await delay();
+    return getFilterCatalog();
+  }
 }
 
 export async function fetchFilterTypeById(
   id: string,
 ): Promise<FilterCategory | null> {
-  await delay();
+  try {
+    const json = await api.get<any>(`filter-type/${id}`);
+    const filter = json?.data?.filter || json?.filter;
+    if (filter) {
+      return {
+        id: filter._id || filter.id || id,
+        name: {
+          en: filter.name?.en?.trim() || "",
+          ar: filter.name?.ar?.trim() || "",
+        },
+        subTypes: Array.isArray(filter.subTypes)
+          ? filter.subTypes.map((st: any) => ({
+              id: st._id || st.id || "",
+              name: {
+                en: st.name?.en?.trim() || "",
+                ar: st.name?.ar?.trim() || "",
+              },
+            }))
+          : [],
+      };
+    }
+  } catch {
+    // Fallback to local store
+  }
   const category = filterTypesStore.find((entry) => entry.id === id);
   return category ? cloneCategory(category) : null;
 }
@@ -154,29 +208,80 @@ export async function fetchFilterTypeForm(
 export async function saveFilterTypeForm(
   form: FilterTypeFormData,
 ): Promise<FilterCategory> {
-  await delay(280);
+  const payload = {
+    name: {
+      en: form.nameEn.trim(),
+      ar: form.nameAr.trim(),
+    },
+    subTypes: form.subTypes
+      .filter((st) => st.nameEn.trim() || st.nameAr.trim())
+      .map((st) => ({
+        name: {
+          en: st.nameEn.trim(),
+          ar: st.nameAr.trim(),
+        },
+      })),
+  };
 
-  const category = formDataToCategory(form);
-  const existingIndex = filterTypesStore.findIndex(
-    (entry) => entry.id === category.id,
-  );
-
-  if (existingIndex === -1) {
-    filterTypesStore = [...filterTypesStore, category];
+  if (form.id) {
+    const json = await api.patch<any>(`filter-type/${form.id}`, payload);
+    const updated = json?.data?.filter || json?.filter;
+    if (updated) {
+      const category: FilterCategory = {
+        id: updated._id || form.id,
+        name: {
+          en: updated.name?.en?.trim() || form.nameEn.trim(),
+          ar: updated.name?.ar?.trim() || form.nameAr.trim(),
+        },
+        subTypes: Array.isArray(updated.subTypes)
+          ? updated.subTypes.map((st: any) => ({
+              id: st._id || "",
+              name: {
+                en: st.name?.en?.trim() || "",
+                ar: st.name?.ar?.trim() || "",
+              },
+            }))
+          : [],
+      };
+      return category;
+    }
   } else {
-    filterTypesStore = filterTypesStore.map((entry, index) =>
-      index === existingIndex ? category : entry,
-    );
+    const json = await api.post<any>("filter-type/create", payload);
+    const created = json?.data?.filter || json?.filter;
+    if (created) {
+      const category: FilterCategory = {
+        id: created._id || "",
+        name: {
+          en: created.name?.en?.trim() || form.nameEn.trim(),
+          ar: created.name?.ar?.trim() || form.nameAr.trim(),
+        },
+        subTypes: Array.isArray(created.subTypes)
+          ? created.subTypes.map((st: any) => ({
+              id: st._id || "",
+              name: {
+                en: st.name?.en?.trim() || "",
+                ar: st.name?.ar?.trim() || "",
+              },
+            }))
+          : [],
+      };
+      return category;
+    }
   }
 
+  const category = formDataToCategory(form);
   return cloneCategory(category);
 }
 
 export async function deleteFilterType(id: string): Promise<boolean> {
-  await delay(200);
-  const before = filterTypesStore.length;
-  filterTypesStore = filterTypesStore.filter((entry) => entry.id !== id);
-  return filterTypesStore.length < before;
+  try {
+    await api.delete(`filter-type/${id}`);
+    return true;
+  } catch {
+    const before = filterTypesStore.length;
+    filterTypesStore = filterTypesStore.filter((entry) => entry.id !== id);
+    return filterTypesStore.length < before;
+  }
 }
 
 /** Replace local store when API data is loaded. */

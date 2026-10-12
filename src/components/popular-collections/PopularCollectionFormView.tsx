@@ -88,7 +88,12 @@ export default function PopularCollectionFormView({
     }
     try {
       const url = await readImageFileAsDataUrl(file);
-      update("imageUrl", url);
+      setForm((prev) => ({
+        ...prev,
+        imageUrl: url,
+        imageFile: file,
+      }));
+      setError(null);
     } catch {
       setError("Could not read image file.");
     }
@@ -107,8 +112,12 @@ export default function PopularCollectionFormView({
     try {
       const saved = await savePopularCollectionForm(form);
       router.push(routes.detail(saved.id));
-    } catch {
-      setError("Could not save collection. Please try again.");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not save collection. Please try again.",
+      );
       setSaving(false);
     }
   }

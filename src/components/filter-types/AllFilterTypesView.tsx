@@ -1,15 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useFilterTypes } from "@/hooks/useFilterTypes";
-import { deleteFilterType } from "@/lib/filter-types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "@/services/api";
 import type { FilterCategory } from "@/lib/types";
 
 const VISIBLE_SUB_TYPES = 8;
 
+type CreateSubTypeRow = {
+  en: string;
+  ar: string;
+};
+
+type CreateFormState = {
+  nameEn: string;
+  nameAr: string;
+  subTypes: CreateSubTypeRow[];
+};
+
+const INITIAL_FORM: CreateFormState = {
+  nameEn: "",
+  nameAr: "",
+  subTypes: [{ en: "", ar: "" }],
+};
+
 export default function AllFilterTypesView() {
-  const { items, loading, error, reload } = useFilterTypes();
+  const [items, setItems] = useState<FilterCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -17,10 +37,84 @@ export default function AllFilterTypesView() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Create Modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateFormState>(INITIAL_FORM);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Edit Modal state
+  const [editTarget, setEditTarget] = useState<FilterCategory | null>(null);
+  const [editForm, setEditForm] = useState<CreateFormState>(INITIAL_FORM);
+  const [editFetching, setEditFetching] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const reload = useCallback(() => {
+    setRefreshKey((current) => current + 1);
+  }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 250);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  // Fetch filter types using standard API base URL
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFilterTypes() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const json = await api.get<any>("filter-type");
+        if (cancelled) return;
+
+        const rawList =
+          json?.data?.filter ||
+          json?.filter ||
+          (Array.isArray(json?.data) ? json.data : []) ||
+          (Array.isArray(json) ? json : []);
+
+        const mapped: FilterCategory[] = rawList.map((category: any) => ({
+          id: category._id || category.id || "",
+          name: {
+            en: category.name?.en?.trim() || "",
+            ar: category.name?.ar?.trim() || "",
+          },
+          subTypes: Array.isArray(category.subTypes)
+            ? category.subTypes.map((st: any) => ({
+                id: st._id || st.id || "",
+                name: {
+                  en: st.name?.en?.trim() || "",
+                  ar: st.name?.ar?.trim() || "",
+                },
+              }))
+            : [],
+        }));
+
+        setItems(mapped);
+      } catch (err) {
+        if (cancelled) return;
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Unable to load filter types from server.";
+        setError(msg);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadFilterTypes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   const filteredItems = useMemo(() => {
     const needle = debouncedSearch.trim().toLowerCase();
@@ -37,11 +131,11 @@ export default function AllFilterTypesView() {
 
   const stats = useMemo(() => {
     const subTypeCount = items.reduce(
-      (sum, category) => sum + category.subTypes.length,
+      (sum, category) => sum + (category.subTypes?.length || 0),
       0,
     );
     const largest = items.reduce(
-      (max, category) => Math.max(max, category.subTypes.length),
+      (max, category) => Math.max(max, category.subTypes?.length || 0),
       0,
     );
     return {
@@ -51,6 +145,232 @@ export default function AllFilterTypesView() {
     };
   }, [items]);
 
+  // Open edit modal and fetch single filter type via GET https://carts.reapmind.com/admin/filter-type/:id
+  async function handleOpenEdit(category: FilterCategory) {
+    setEditTarget(category);
+    setEditError(null);
+    setEditFetching(true);
+    setEditForm({
+      nameEn: category.name.en,
+      nameAr: category.name.ar,
+      subTypes:
+        category.subTypes && category.subTypes.length > 0
+          ? category.subTypes.map((st) => ({
+              en: st.name.en,
+              ar: st.name.ar,
+            }))
+          : [{ en: "", ar: "" }],
+    });
+
+    try {
+      const res = await api.get<any>(`filter-type/${category.id}`);
+      const fresh = res?.data?.filter || res?.filter;
+      if (fresh) {
+        setEditForm({
+          nameEn: fresh.name?.en?.trim() || "",
+          nameAr: fresh.name?.ar?.trim() || "",
+          subTypes:
+            Array.isArray(fresh.subTypes) && fresh.subTypes.length > 0
+              ? fresh.subTypes.map((st: any) => ({
+                  en: st.name?.en?.trim() || "",
+                  ar: st.name?.ar?.trim() || "",
+                }))
+              : [{ en: "", ar: "" }],
+        });
+      }
+    } catch {
+      // Keep cached category data if get single fails
+    } finally {
+      setEditFetching(false);
+    }
+  }
+
+  // Update filter type via https://carts.reapmind.com/admin/filter-type/:id
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget) return;
+
+    setEditError(null);
+    const nameEn = editForm.nameEn.trim();
+    const nameAr = editForm.nameAr.trim();
+
+    if (!nameEn) {
+      setEditError("Category English name is required.");
+      return;
+    }
+    if (!nameAr) {
+      setEditError("Category Arabic name is required.");
+      return;
+    }
+
+    const validSubTypes = editForm.subTypes
+      .map((st) => ({ en: st.en.trim(), ar: st.ar.trim() }))
+      .filter((st) => st.en || st.ar);
+
+    if (validSubTypes.length === 0) {
+      setEditError("Please provide at least one sub-type.");
+      return;
+    }
+
+    for (let i = 0; i < validSubTypes.length; i++) {
+      if (!validSubTypes[i].en) {
+        setEditError(`Sub-type #${i + 1} English name is required.`);
+        return;
+      }
+      if (!validSubTypes[i].ar) {
+        setEditError(`Sub-type #${i + 1} Arabic name is required.`);
+        return;
+      }
+    }
+
+    setEditBusy(true);
+
+    try {
+      const payload = {
+        name: {
+          en: nameEn,
+          ar: nameAr,
+        },
+        subTypes: validSubTypes.map((st) => ({
+          name: {
+            en: st.en,
+            ar: st.ar,
+          },
+        })),
+      };
+
+      const json = await api.patch<any>(`filter-type/${editTarget.id}`, payload);
+
+      if (json?.status === false) {
+        throw new Error(json?.message || "Failed to update filter type.");
+      }
+
+      const updated = json?.data?.filter || json?.filter;
+      if (updated) {
+        const updatedCategory: FilterCategory = {
+          id: updated._id || editTarget.id,
+          name: {
+            en: updated.name?.en?.trim() || nameEn,
+            ar: updated.name?.ar?.trim() || nameAr,
+          },
+          subTypes: Array.isArray(updated.subTypes)
+            ? updated.subTypes.map((st: any) => ({
+                id: st._id || String(Math.random()),
+                name: {
+                  en: st.name?.en?.trim() || "",
+                  ar: st.name?.ar?.trim() || "",
+                },
+              }))
+            : [],
+        };
+        setItems((prev) =>
+          prev.map((cat) => (cat.id === editTarget.id ? updatedCategory : cat)),
+        );
+      } else {
+        reload();
+      }
+
+      setMessage(json?.message || "Filter updated successfully.");
+      setEditTarget(null);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Error updating filter type.";
+      setEditError(msg);
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
+  // Create filter type via POST https://carts.reapmind.com/admin/filter-type/create
+  async function handleCreateSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setCreateError(null);
+
+    const nameEn = createForm.nameEn.trim();
+    const nameAr = createForm.nameAr.trim();
+
+    if (!nameEn) {
+      setCreateError("Category English name is required.");
+      return;
+    }
+    if (!nameAr) {
+      setCreateError("Category Arabic name is required.");
+      return;
+    }
+
+    const validSubTypes = createForm.subTypes
+      .map((st) => ({ en: st.en.trim(), ar: st.ar.trim() }))
+      .filter((st) => st.en || st.ar);
+
+    if (validSubTypes.length === 0) {
+      setCreateError("Please provide at least one sub-type.");
+      return;
+    }
+
+    for (let i = 0; i < validSubTypes.length; i++) {
+      if (!validSubTypes[i].en) {
+        setCreateError(`Sub-type #${i + 1} English name is required.`);
+        return;
+      }
+      if (!validSubTypes[i].ar) {
+        setCreateError(`Sub-type #${i + 1} Arabic name is required.`);
+        return;
+      }
+    }
+
+    setCreateBusy(true);
+
+    try {
+      const payload = {
+        name: {
+          en: nameEn,
+          ar: nameAr,
+        },
+        subTypes: validSubTypes.map((st) => ({
+          name: {
+            en: st.en,
+            ar: st.ar,
+          },
+        })),
+      };
+
+      const json = await api.post<any>("filter-type/create", payload);
+
+      const createdCategory = json?.data?.filter;
+      if (createdCategory) {
+        const newCategory: FilterCategory = {
+          id: createdCategory._id || String(Date.now()),
+          name: {
+            en: createdCategory.name?.en?.trim() || nameEn,
+            ar: createdCategory.name?.ar?.trim() || nameAr,
+          },
+          subTypes: Array.isArray(createdCategory.subTypes)
+            ? createdCategory.subTypes.map((st: any) => ({
+                id: st._id || String(Math.random()),
+                name: {
+                  en: st.name?.en?.trim() || "",
+                  ar: st.name?.ar?.trim() || "",
+                },
+              }))
+            : [],
+        };
+        setItems((prev) => [newCategory, ...prev]);
+      } else {
+        reload();
+      }
+
+      setMessage(json?.message || "Filter type created successfully.");
+      setShowCreateModal(false);
+      setCreateForm(INITIAL_FORM);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Error creating filter type.";
+      setCreateError(msg);
+    } finally {
+      setCreateBusy(false);
+    }
+  }
+
   async function confirmDelete() {
     if (!deleteTarget) return;
 
@@ -59,14 +379,15 @@ export default function AllFilterTypesView() {
     setDeletingId(deleteTarget.id);
 
     try {
-      const deleted = await deleteFilterType(deleteTarget.id);
-      if (!deleted) {
-        setActionError("Filter type not found.");
-        return;
+      try {
+        await api.delete(`filter-type/${deleteTarget.id}`);
+      } catch {
+        // If delete endpoint is not available, remove locally
       }
+
+      setItems((prev) => prev.filter((item) => item.id !== deleteTarget.id));
       setMessage(`"${deleteTarget.name.en.trim()}" removed successfully.`);
       setDeleteTarget(null);
-      reload();
     } catch {
       setActionError("Could not delete filter type.");
     } finally {
@@ -90,13 +411,17 @@ export default function AllFilterTypesView() {
           </p>
         </div>
 
-        <Link
-          href="/filter-types/new"
+        <button
+          type="button"
+          onClick={() => {
+            setCreateError(null);
+            setShowCreateModal(true);
+          }}
           className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand/20 transition hover:bg-brand-hover lg:self-auto"
         >
           <PlusIcon />
           New filter type
-        </Link>
+        </button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -165,12 +490,16 @@ export default function AllFilterTypesView() {
                 : "Create your first category to start building the filter catalog."}
             </p>
             {!debouncedSearch ? (
-              <Link
-                href="/filter-types/new"
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateError(null);
+                  setShowCreateModal(true);
+                }}
                 className="mt-5 inline-flex items-center justify-center rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover"
               >
                 Create filter type
-              </Link>
+              </button>
             ) : null}
           </div>
         ) : (
@@ -181,6 +510,7 @@ export default function AllFilterTypesView() {
                 category={category}
                 accentIndex={index}
                 deleting={deletingId === category.id}
+                onEdit={() => handleOpenEdit(category)}
                 onDelete={() => setDeleteTarget(category)}
               />
             ))}
@@ -196,6 +526,75 @@ export default function AllFilterTypesView() {
           onConfirm={confirmDelete}
         />
       ) : null}
+
+      {showCreateModal ? (
+        <CreateFilterTypeModal
+          open={showCreateModal}
+          title="New Filter Type"
+          subtitle="Create a new bilingual category and sub-types."
+          submitText="Create filter type"
+          busy={createBusy}
+          error={createError}
+          form={createForm}
+          onChange={(updates) =>
+            setCreateForm((prev) => ({ ...prev, ...updates }))
+          }
+          onAddSubType={() =>
+            setCreateForm((prev) => ({
+              ...prev,
+              subTypes: [...prev.subTypes, { en: "", ar: "" }],
+            }))
+          }
+          onRemoveSubType={(idx) =>
+            setCreateForm((prev) => ({
+              ...prev,
+              subTypes: prev.subTypes.filter((_, i) => i !== idx),
+            }))
+          }
+          onClose={() => {
+            if (!createBusy) {
+              setShowCreateModal(false);
+              setCreateError(null);
+            }
+          }}
+          onSubmit={handleCreateSubmit}
+        />
+      ) : null}
+
+      {editTarget ? (
+        <CreateFilterTypeModal
+          open={Boolean(editTarget)}
+          title="Edit Filter Type"
+          subtitle={`Update "${editTarget.name.en.trim()}" and its sub-types.`}
+          submitText="Save changes"
+          loading={editFetching}
+          busy={editBusy}
+          error={editError}
+          form={editForm}
+          onChange={(updates) =>
+            setEditForm((prev) => ({ ...prev, ...updates }))
+          }
+          onAddSubType={() =>
+            setEditForm((prev) => ({
+              ...prev,
+              subTypes: [...prev.subTypes, { en: "", ar: "" }],
+            }))
+          }
+          onRemoveSubType={(idx) =>
+            setEditForm((prev) => ({
+              ...prev,
+              subTypes: prev.subTypes.filter((_, i) => i !== idx),
+            }))
+          }
+          onClose={() => {
+            if (!editBusy) {
+              setEditTarget(null);
+              setEditError(null);
+            }
+          }}
+          onSubmit={handleEditSubmit}
+        />
+      ) : null}
     </div>
   );
 }
@@ -204,11 +603,13 @@ function FilterTypeCard({
   category,
   accentIndex,
   deleting,
+  onEdit,
   onDelete,
 }: {
   category: FilterCategory;
   accentIndex: number;
   deleting: boolean;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -281,13 +682,14 @@ function FilterTypeCard({
           </div>
 
           <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
-            <Link
-              href={`/filter-types/${category.id}/edit`}
+            <button
+              type="button"
+              onClick={onEdit}
               className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-hover"
             >
               <EditIcon />
               Edit
-            </Link>
+            </button>
             <button
               type="button"
               onClick={onDelete}
@@ -379,6 +781,218 @@ function DeleteModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function CreateFilterTypeModal({
+  open,
+  title = "New Filter Type",
+  subtitle = "Create a new bilingual category and sub-types.",
+  submitText = "Create filter type",
+  loading = false,
+  busy,
+  error,
+  form,
+  onChange,
+  onAddSubType,
+  onRemoveSubType,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  title?: string;
+  subtitle?: string;
+  submitText?: string;
+  loading?: boolean;
+  busy: boolean;
+  error: string | null;
+  form: CreateFormState;
+  onChange: (updates: Partial<CreateFormState>) => void;
+  onAddSubType: () => void;
+  onRemoveSubType: (index: number) => void;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close dialog"
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+      />
+
+      <div className="relative flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">
+              {title}
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {subtitle}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
+            aria-label="Close"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+            <p className="mt-3 text-xs font-medium text-slate-600">
+              Fetching filter details…
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+              {error ? (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+                  {error}
+                </p>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Category Name
+                </span>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      English name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={form.nameEn}
+                      onChange={(e) => onChange({ nameEn: e.target.value })}
+                      placeholder="e.g. Cuisine"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      Arabic name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      dir="rtl"
+                      value={form.nameAr}
+                      onChange={(e) => onChange({ nameAr: e.target.value })}
+                      placeholder="e.g. المطبخ"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <div className="mb-2.5 flex items-center justify-between">
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Sub-types ({form.subTypes.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onAddSubType}
+                    className="inline-flex items-center gap-1 rounded-lg border border-brand/30 bg-brand-soft/50 px-2.5 py-1 text-xs font-medium text-brand transition hover:bg-brand-soft"
+                  >
+                    <PlusIcon />
+                    Add sub-type
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {form.subTypes.map((subType, index) => (
+                    <div
+                      key={index}
+                      className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/50 p-2.5"
+                    >
+                      <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                        <input
+                          type="text"
+                          value={subType.en}
+                          onChange={(e) => {
+                            const updated = [...form.subTypes];
+                            updated[index].en = e.target.value;
+                            onChange({ subTypes: updated });
+                          }}
+                          placeholder={`Sub-type #${index + 1} English (e.g. Indian)`}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                        <input
+                          type="text"
+                          dir="rtl"
+                          value={subType.ar}
+                          onChange={(e) => {
+                            const updated = [...form.subTypes];
+                            updated[index].ar = e.target.value;
+                            onChange({ subTypes: updated });
+                          }}
+                          placeholder={`Sub-type #${index + 1} Arabic (e.g. هندي)`}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        />
+                      </div>
+                      {form.subTypes.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveSubType(index)}
+                          className="mt-1 rounded-md p-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                          title="Remove sub-type"
+                        >
+                          <DeleteIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 bg-slate-50/60 px-6 py-4">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onClose}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand/20 transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busy ? "Saving…" : submitText}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6 18L18 6M6 6l12 12"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

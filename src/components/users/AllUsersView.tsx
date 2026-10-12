@@ -1,20 +1,72 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PaginationBar } from "@/components/ui/PaginationBar";
-import { useUsers } from "@/hooks/useUsers";
+import { api } from "@/services/api";
 import {
   USER_ROLE_OPTIONS,
-  deleteUser,
   downloadUsersCsv,
-  fetchUsersForExport,
-  formatUserJoinDate,
-  setUserBlocked,
 } from "@/lib/users";
 import type { UserRecord, UserRole } from "@/lib/types";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
+
+type ApiUser = {
+  _id: string;
+  name?: string;
+  email?: string;
+  mobile?: string;
+  smsVerified?: boolean;
+  isBlocked?: boolean;
+  role?: string;
+  createdAt?: string;
+};
+
+type ApiPagination = {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+};
+
+type ApiUsersResponse = {
+  status: boolean;
+  message: string;
+  data: {
+    users: ApiUser[];
+    pagination: ApiPagination;
+  };
+};
+
+function formatJoinDate(value?: string) {
+  if (!value) return "-";
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "-";
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return "-";
+  }
+}
+
+function mapApiUser(user: ApiUser): UserRecord {
+  return {
+    id: user._id,
+    name: user.name?.trim() || "-",
+    mobile: user.mobile || "-",
+    smsVerified: Boolean(user.smsVerified),
+    blocked: Boolean(user.isBlocked),
+    email: user.email || "-",
+    joinedAt: user.createdAt || "",
+    role: (user.role === "vendor" ? "vendor" : "customer") as UserRole,
+  };
+}
 
 const EMPTY_FILTERS = {
   search: "",
@@ -33,11 +85,20 @@ export default function AllUsersView() {
   const [joinedFrom, setJoinedFrom] = useState("");
   const [joinedTo, setJoinedTo] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [items, setItems] = useState<UserRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [blockingId, setBlockingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const reload = useCallback(() => {
+    setRefreshKey((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -47,15 +108,68 @@ export default function AllUsersView() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const { items, total, loading, error, reload } = useUsers({
-    search: debouncedSearch,
-    role,
-    joinedFrom,
-    joinedTo,
-    page,
-    pageSize: PAGE_SIZE,
-    sortDir,
-  });
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchUsersList() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const params = new URLSearchParams();
+        params.set("page", String(page));
+        if (debouncedSearch.trim()) {
+          params.set("search", debouncedSearch.trim());
+        }
+        if (role) {
+          params.set("type", role);
+        }
+        if (joinedFrom) {
+          params.set("joinedFrom", joinedFrom);
+        }
+        if (joinedTo) {
+          params.set("joinedTo", joinedTo);
+        }
+
+        const endpoint = `users?${params.toString()}`;
+        const res = await api.get<ApiUsersResponse>(endpoint);
+
+        if (cancelled) return;
+
+        if (res && res.data) {
+          const rawUsers = Array.isArray(res.data.users) ? res.data.users : [];
+          setItems(rawUsers.map(mapApiUser));
+
+          if (res.data.pagination) {
+            setTotal(res.data.pagination.total ?? rawUsers.length);
+            if (res.data.pagination.limit) {
+              setPageSize(res.data.pagination.limit);
+            }
+          } else {
+            setTotal(rawUsers.length);
+          }
+        } else {
+          setItems([]);
+          setTotal(0);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const message =
+          err instanceof Error ? err.message : "Unable to fetch users.";
+        setError(message);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchUsersList();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, debouncedSearch, role, joinedFrom, joinedTo, refreshKey]);
 
   function resetFilters() {
     setSearch(EMPTY_FILTERS.search);
@@ -64,24 +178,25 @@ export default function AllUsersView() {
     setJoinedFrom(EMPTY_FILTERS.joinedFrom);
     setJoinedTo(EMPTY_FILTERS.joinedTo);
     setPage(1);
+    reload();
   }
 
   function toggleSort() {
     setSortDir((current) => (current === "desc" ? "asc" : "desc"));
-    setPage(1);
   }
+
+  const sortedItems = [...items].sort((a, b) => {
+    const delta =
+      new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+    return sortDir === "asc" ? delta : -delta;
+  });
 
   async function handleExport() {
     setExporting(true);
     try {
-      const rows = await fetchUsersForExport({
-        search: debouncedSearch || undefined,
-        role: role || undefined,
-        joinedFrom: joinedFrom || undefined,
-        joinedTo: joinedTo || undefined,
-        sortDir,
-      });
-      downloadUsersCsv(rows, `users-${new Date().toISOString().slice(0, 10)}.csv`);
+      downloadUsersCsv(sortedItems, `users-${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch {
+      setActionError("Unable to export users.");
     } finally {
       setExporting(false);
     }
@@ -90,33 +205,41 @@ export default function AllUsersView() {
   async function handleBlock(user: UserRecord) {
     setActionError(null);
     setBlockingId(user.id);
+    const action = user.blocked ? "unblock" : "block";
+
     try {
-      await setUserBlocked(user.id, !user.blocked);
-      reload();
-    } catch {
-      setActionError("Unable to update block status.");
+      const res = await api.post<{
+        status: boolean;
+        message: string;
+        data?: {
+          user?: {
+            _id?: string;
+            isBlocked?: boolean;
+            name?: string;
+            email?: string;
+            mobile?: string;
+          };
+        };
+      }>(`users/${user.id}/${action}`);
+
+      const nextBlocked =
+        res?.data?.user?.isBlocked !== undefined
+          ? res.data.user.isBlocked
+          : !user.blocked;
+
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === user.id ? { ...item, blocked: nextBlocked } : item
+        )
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : `Unable to ${action} user.`;
+      setActionError(message);
     } finally {
       setBlockingId(null);
-    }
-  }
-
-  async function handleDelete(user: UserRecord) {
-    const confirmed = window.confirm(`Delete user "${user.name}"?`);
-    if (!confirmed) return;
-
-    setActionError(null);
-    setDeletingId(user.id);
-    try {
-      const deleted = await deleteUser(user.id);
-      if (!deleted) {
-        setActionError("User not found.");
-        return;
-      }
-      reload();
-    } catch {
-      setActionError("Unable to delete user.");
-    } finally {
-      setDeletingId(null);
     }
   }
 
@@ -259,28 +382,25 @@ export default function AllUsersView() {
                       </button>
                     </th>
                     <th className="px-5 py-3.5">Role</th>
-                    <th className="px-5 py-3.5">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {items.length === 0 ? (
+                  {sortedItems.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={7}
                         className="px-5 py-10 text-center text-slate-500"
                       >
                         No users match these filters.
                       </td>
                     </tr>
                   ) : (
-                    items.map((user) => (
+                    sortedItems.map((user) => (
                       <UserRow
                         key={user.id}
                         user={user}
                         blocking={blockingId === user.id}
-                        deleting={deletingId === user.id}
                         onBlock={() => handleBlock(user)}
-                        onDelete={() => handleDelete(user)}
                       />
                     ))
                   )}
@@ -289,19 +409,17 @@ export default function AllUsersView() {
             </div>
 
             <div className="grid gap-3 p-4 xl:hidden">
-              {items.length === 0 ? (
+              {sortedItems.length === 0 ? (
                 <p className="py-6 text-center text-sm text-slate-500">
                   No users match these filters.
                 </p>
               ) : (
-                items.map((user) => (
+                sortedItems.map((user) => (
                   <UserCard
                     key={user.id}
                     user={user}
                     blocking={blockingId === user.id}
-                    deleting={deletingId === user.id}
                     onBlock={() => handleBlock(user)}
-                    onDelete={() => handleDelete(user)}
                   />
                 ))
               )}
@@ -312,7 +430,7 @@ export default function AllUsersView() {
         <PaginationBar
           total={total}
           page={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           onPageChange={setPage}
         />
       </div>
@@ -323,15 +441,11 @@ export default function AllUsersView() {
 function UserRow({
   user,
   blocking,
-  deleting,
   onBlock,
-  onDelete,
 }: {
   user: UserRecord;
   blocking: boolean;
-  deleting: boolean;
   onBlock: () => void;
-  onDelete: () => void;
 }) {
   return (
     <tr className="align-middle hover:bg-slate-50/70">
@@ -339,30 +453,20 @@ function UserRow({
       <td className="px-5 py-4 text-slate-700">{user.mobile}</td>
       <td className="px-5 py-4 text-slate-700">{String(user.smsVerified)}</td>
       <td className="px-5 py-4">
-        <div className="flex flex-col items-start gap-2">
-          <span className="text-slate-700">{String(user.blocked)}</span>
-          <button
-            type="button"
-            onClick={onBlock}
-            disabled={blocking}
-            className="rounded-md bg-brand px-3 py-1 text-xs font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {blocking ? "…" : user.blocked ? "Unblock" : "Block"}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onBlock}
+          disabled={blocking}
+          className="rounded-md bg-brand px-3 py-1 text-xs font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {blocking ? "…" : user.blocked ? "Unblock" : "Block"}
+        </button>
       </td>
       <td className="px-5 py-4 text-slate-600">{user.email || "-"}</td>
       <td className="px-5 py-4 text-slate-600">
-        {formatUserJoinDate(user.joinedAt)}
+        {formatJoinDate(user.joinedAt)}
       </td>
       <td className="px-5 py-4 capitalize text-slate-700">{user.role}</td>
-      <td className="px-5 py-4">
-        <UserActions
-          user={user}
-          deleting={deleting}
-          onDelete={onDelete}
-        />
-      </td>
     </tr>
   );
 }
@@ -370,24 +474,17 @@ function UserRow({
 function UserCard({
   user,
   blocking,
-  deleting,
   onBlock,
-  onDelete,
 }: {
   user: UserRecord;
   blocking: boolean;
-  deleting: boolean;
   onBlock: () => void;
-  onDelete: () => void;
 }) {
   return (
     <article className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold text-slate-900">{user.name}</p>
-          <p className="mt-0.5 text-sm capitalize text-slate-500">{user.role}</p>
-        </div>
-        <UserActions user={user} deleting={deleting} onDelete={onDelete} />
+      <div>
+        <p className="font-semibold text-slate-900">{user.name}</p>
+        <p className="mt-0.5 text-sm capitalize text-slate-500">{user.role}</p>
       </div>
       <dl className="mt-3 space-y-1.5 text-sm">
         <div className="flex justify-between gap-3">
@@ -399,16 +496,12 @@ function UserCard({
           <dd className="text-slate-700">{String(user.smsVerified)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt className="text-slate-500">Blocked</dt>
-          <dd className="text-slate-700">{String(user.blocked)}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
           <dt className="text-slate-500">Email</dt>
           <dd className="text-right text-slate-700">{user.email || "-"}</dd>
         </div>
         <div className="flex justify-between gap-3">
           <dt className="text-slate-500">Join date</dt>
-          <dd className="text-slate-700">{formatUserJoinDate(user.joinedAt)}</dd>
+          <dd className="text-slate-700">{formatJoinDate(user.joinedAt)}</dd>
         </div>
       </dl>
       <button
@@ -420,44 +513,6 @@ function UserCard({
         {blocking ? "Updating…" : user.blocked ? "Unblock" : "Block"}
       </button>
     </article>
-  );
-}
-
-function UserActions({
-  user,
-  deleting,
-  onDelete,
-}: {
-  user: UserRecord;
-  deleting: boolean;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <Link
-        href={`/users/${user.id}`}
-        aria-label={`View ${user.name}`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-sky-200 bg-sky-50 text-sky-700 transition hover:bg-sky-100"
-      >
-        <ProfileIcon />
-      </Link>
-      <Link
-        href={`/users/${user.id}/edit`}
-        aria-label={`Edit ${user.name}`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
-      >
-        <EditIcon />
-      </Link>
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={deleting}
-        aria-label={`Delete ${user.name}`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <DeleteIcon />
-      </button>
-    </div>
   );
 }
 
@@ -484,46 +539,6 @@ function SortIcon({ direction }: { direction: "asc" | "desc" }) {
         strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ProfileIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="8" r="3.25" stroke="currentColor" strokeWidth="1.75" />
-      <path
-        d="M5.5 19.5a6.5 6.5 0 0 1 13 0"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function EditIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="m15.5 5.5 3 3M7 17.5V20h2.5L18 11.5l-2.5-2.5L7 17.5Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DeleteIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="m8 8 8 8M16 8l-8 8"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
       />
     </svg>
   );

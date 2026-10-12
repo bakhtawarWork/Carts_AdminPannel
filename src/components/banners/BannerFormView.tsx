@@ -56,7 +56,10 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
         let selectedVendorId = "";
         let selectedOfferingId = "";
 
-        const dest = record.redirectionPath ?? "";
+        const dest =
+          typeof record.redirectionPath === "string"
+            ? record.redirectionPath
+            : "";
         if (
           dest.startsWith("vendors/") ||
           record.actionType === "vendor" ||

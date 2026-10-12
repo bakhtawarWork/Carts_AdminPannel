@@ -9,11 +9,15 @@ import { readImageFileAsDataUrl } from "@/lib/offering-image-upload";
 import {
   createVendor,
   createVendorDraft,
+  deleteDraftVendor,
+  getDraftVendorDetails,
   getVendorDetails,
+  updateDraftVendor,
   updateVendor,
   type CreateVendorImagePayload,
   type CreateVendorPayload,
   type CreateVendorServiceMap,
+  type UpdateDraftVendorPayload,
   type UpdateVendorAreaCost,
   type UpdateVendorContactInfo,
   type UpdateVendorDeletedImage,
@@ -48,6 +52,7 @@ function emptyServiceFields(): VendorServiceFields {
 
 export function createEmptyVendorForm(): VendorFormData {
   return {
+    isDraft: false,
     englishName: "",
     englishTagline: "",
     englishShortDescription: "",
@@ -210,13 +215,20 @@ function mapDeliveryAreas(
 function mapVendorDetails(
   vendorId: string,
   detail: VendorDetailApiItem,
+  isDraft = false,
 ): VendorFormData {
   const base = createEmptyVendorForm();
   const englishName = cleanText(detail.name?.en);
   const servicesOffered = (detail.serviceCategories ?? []).filter(
     (id): id is VendorServiceId => SERVICE_IDS.has(id as VendorServiceId),
   );
+  const rawLogo = detail.logo
+    ? Array.isArray(detail.logo)
+      ? detail.logo
+      : [detail.logo]
+    : null;
   const logo =
+    (rawLogo ? mapImages(rawLogo, englishName || "Vendor logo")[0] : null) ??
     mapImages(detail.images, englishName || "Vendor logo")[0] ??
     mapImages(detail.logoImg, englishName || "Vendor logo")[0] ??
     null;
@@ -262,6 +274,7 @@ function mapVendorDetails(
   return {
     ...base,
     id: detail._id || detail.id || vendorId,
+    isDraft,
     englishName,
     englishTagline: cleanText(detail.tagline?.en),
     englishShortDescription: cleanText(detail.shortDescription?.en),
@@ -292,12 +305,34 @@ function mapVendorDetails(
   };
 }
 
-/** GET /admin/vendors/details?vendorId= — new vendor form when id is omitted. */
+/** GET /admin/vendors/details?vendorId= or GET /vendors/draft/:id */
 export async function fetchVendorForm(
   id?: string,
+  isDraft?: boolean,
 ): Promise<VendorFormData | null> {
   if (!id) return createEmptyVendorForm();
-  return mapVendorDetails(id, await getVendorDetails(id));
+
+  if (isDraft) {
+    try {
+      const draftDetail = await getDraftVendorDetails(id);
+      return mapVendorDetails(id, draftDetail, true);
+    } catch {
+      const regularDetail = await getVendorDetails(id);
+      return mapVendorDetails(id, regularDetail, false);
+    }
+  }
+
+  try {
+    const detail = await getVendorDetails(id);
+    return mapVendorDetails(id, detail, false);
+  } catch (error) {
+    try {
+      const draftDetail = await getDraftVendorDetails(id);
+      return mapVendorDetails(id, draftDetail, true);
+    } catch {
+      throw error;
+    }
+  }
 }
 
 function toNumberOrNull(value: string, enabled: boolean): number | null {
@@ -347,20 +382,24 @@ async function toImagePayload(
     ];
   }
 
-  if (image.url.startsWith("blob:")) {
-    const blob = await fetch(image.url).then((response) => response.blob());
-    const file = new File([blob], image.title || "image.png", {
-      type: blob.type || "image/png",
-    });
-    const value = await readImageFileAsDataUrl(file);
-    return [
-      {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        value,
-      },
-    ];
+  if (image.url.startsWith("blob:") || image.url.startsWith("http://") || image.url.startsWith("https://")) {
+    try {
+      const blob = await fetch(image.url).then((response) => response.blob());
+      const file = new File([blob], image.title || "image.png", {
+        type: blob.type || "image/png",
+      });
+      const value = await readImageFileAsDataUrl(file);
+      return [
+        {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          value,
+        },
+      ];
+    } catch {
+      return [];
+    }
   }
 
   return [];
@@ -661,11 +700,127 @@ export async function toUpdateVendorPayload(
   };
 }
 
+export async function toDraftVendorUpdatePayload(
+  data: VendorFormData,
+  mode: "save" | "draft",
+): Promise<UpdateDraftVendorPayload> {
+  const deliveryAreasAndCost: Record<
+    string,
+    Array<{ areaId: string; fees: number }>
+  > = {};
+  const minimumNotice: Record<string, number | null> = {};
+  const capacity: Record<string, number | null> = {};
+  const vendorimages: Record<string, CreateVendorImagePayload[]> = {};
+
+  for (const service of VENDOR_SERVICES) {
+    const id = service.id;
+    const enabled = data.servicesOffered.includes(id);
+    if (!enabled) continue;
+
+    const fields = data.services[id];
+    deliveryAreasAndCost[id] = fields.deliveryAreas.map((entry) => ({
+      areaId: entry.areaId,
+      fees: toFees(entry.cost),
+    }));
+    minimumNotice[id] = toNumberOrNull(fields.minNotice, true);
+    capacity[id] = toNumberOrNull(fields.capacity, true);
+
+    const newUploads = (
+      await Promise.all(
+        fields.images
+          .filter((img) => !img.isExisting)
+          .map((img) => toImagePayload(img)),
+      )
+    ).flat();
+
+    if (newUploads.length > 0) {
+      vendorimages[id] = newUploads;
+    }
+  }
+
+  const payload: UpdateDraftVendorPayload = {
+    name: {
+      en: data.englishName.trim(),
+      ar: data.arabicName.trim(),
+    },
+    tagline: {
+      en: data.englishTagline.trim(),
+      ar: data.arabicTagline.trim(),
+    },
+    shortDescription: {
+      en: data.englishShortDescription.trim(),
+      ar: data.arabicShortDescription.trim(),
+    },
+    published: mode === "draft" ? false : Boolean(data.published),
+    percentage: toPercentage(data.percentage),
+    serviceCategories: [...data.servicesOffered],
+    deliveryAreasAndCost,
+    minimumNotice,
+    capacity,
+    contactInfo: {
+      primaryEmail: data.email.trim(),
+      ...(data.secondaryEmail?.trim()
+        ? { secondaryEmail: data.secondaryEmail.trim() }
+        : {}),
+      mobile: data.mobile.trim(),
+      phone: data.phone.trim(),
+    },
+  };
+
+  if (Object.keys(vendorimages).length > 0) {
+    payload.vendorimages = vendorimages;
+  }
+
+  if (data.logo && !data.logo.isExisting) {
+    const logoUpload = await toImagePayload(data.logo);
+    if (logoUpload.length > 0) {
+      payload.logoImg = logoUpload;
+    }
+  }
+
+  return payload;
+}
+
 export async function saveVendorForm(
   data: VendorFormData,
   mode: "save" | "draft",
 ): Promise<{ ok: true; id: string; mode: "save" | "draft"; message: string }> {
-  if (data.id) {
+  // If user clicked "Save as draft"
+  if (mode === "draft") {
+    // If it's already an existing draft vendor, update it as draft
+    if (data.id && data.isDraft) {
+      const payload = await toDraftVendorUpdatePayload(data, mode);
+      const updated = await updateDraftVendor(data.id, payload);
+
+      const { invalidateVendorFilterOptionsCache } = await import("@/lib/vendors");
+      invalidateVendorFilterOptionsCache();
+
+      return {
+        ok: true,
+        id: data.id,
+        mode,
+        message: updated.message,
+      };
+    }
+
+    // Otherwise (new vendor, or saving a normal vendor as draft), create as draft
+    const payload = await toCreateVendorPayload(data, mode);
+    const created = await createVendorDraft(payload);
+
+    const { invalidateVendorFilterOptionsCache } = await import("@/lib/vendors");
+    invalidateVendorFilterOptionsCache();
+
+    return {
+      ok: true,
+      id: created.id,
+      mode,
+      message: created.message,
+    };
+  }
+
+  // If user clicked "Save" (mode === "save")
+  // Case A: Editing an existing normal vendor
+  if (data.id && !data.isDraft) {
     const payload = await toUpdateVendorPayload(data, mode);
     const updated = await updateVendor(data.id, payload);
 
@@ -680,11 +835,18 @@ export async function saveVendorForm(
     };
   }
 
+  // Case B: Creating a new vendor OR publishing/converting an existing draft vendor into a normal vendor
   const payload = await toCreateVendorPayload(data, mode);
-  const created =
-    mode === "draft"
-      ? await createVendorDraft(payload)
-      : await createVendor(payload);
+  const created = await createVendor(payload);
+
+  // If this was an existing draft vendor, delete the original draft so it doesn't linger in drafts
+  if (data.id && data.isDraft) {
+    try {
+      await deleteDraftVendor(data.id);
+    } catch {
+      // Non-fatal if draft deletion fails
+    }
+  }
 
   const { invalidateVendorFilterOptionsCache } = await import("@/lib/vendors");
   invalidateVendorFilterOptionsCache();

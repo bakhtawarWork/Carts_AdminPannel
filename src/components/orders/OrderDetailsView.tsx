@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+  cancelOrderByAdmin,
   fetchOrderDetail,
   formatApprovedLabel,
   formatDecidedLabel,
@@ -22,6 +23,11 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelFeedback, setCancelFeedback] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +80,61 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
     });
   }
 
+  async function handleCancelOrder() {
+    if (cancelling) return;
+
+    setCancelling(true);
+    setCancelFeedback(null);
+
+    try {
+      const targetId = order?.orderNumber ?? orderId;
+      const response = await cancelOrderByAdmin(targetId, { isApproved: true });
+
+      setCancelFeedback({
+        type: "success",
+        text: response?.message || "Order canceled successfully",
+      });
+
+      try {
+        const fresh = await fetchOrderDetail(String(targetId));
+        if (fresh) {
+          setOrder(fresh);
+          return;
+        }
+      } catch {
+        // Fall back to local state update if refetching fails
+      }
+
+      setOrder((current) => {
+        if (!current) return current;
+        const now = new Date().toISOString();
+        return {
+          ...current,
+          status: "canceled",
+          isCancelled: true,
+          history: [
+            ...current.history,
+            {
+              id: `hist-cancel-${Date.now()}`,
+              date: now,
+              status: "canceled",
+              by: "admin",
+            },
+          ],
+        };
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to cancel order.";
+      setCancelFeedback({
+        type: "error",
+        text: message,
+      });
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-16 text-center text-sm text-slate-500 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -97,6 +158,12 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
     order.vendor.rating === null
       ? `/ 100 (${order.vendor.reviewCount} reviews)`
       : `${order.vendor.rating} / 100 (${order.vendor.reviewCount} reviews)`;
+
+  const isOrderCancelled = Boolean(
+    order.isCancelled ||
+      order.status?.toLowerCase() === "canceled" ||
+      order.status?.toLowerCase() === "cancelled",
+  );
 
   return (
     <div className="space-y-5">
@@ -210,12 +277,68 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
           ))}
         </ol>
 
-        <button
-          type="button"
-          className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
-        >
-          Cancel order
-        </button>
+        {!isOrderCancelled ? (
+          <div className="mt-4 flex flex-col gap-2">
+            {cancelFeedback ? (
+              <div
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium ${
+                  cancelFeedback.type === "success"
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border border-red-200 bg-red-50 text-red-800"
+                }`}
+              >
+                {cancelFeedback.text}
+              </div>
+            ) : null}
+
+            <div>
+              <button
+                type="button"
+                onClick={() => void handleCancelOrder()}
+                disabled={cancelling}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cancelling ? (
+                  <>
+                    <svg
+                      className="h-4 w-4 animate-spin text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v8H4z"
+                      />
+                    </svg>
+                    <span>Canceling order…</span>
+                  </>
+                ) : (
+                  <span>Cancel order</span>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : cancelFeedback ? (
+          <div
+            className={`mt-4 rounded-lg px-3.5 py-2 text-sm font-medium ${
+              cancelFeedback.type === "success"
+                ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border border-red-200 bg-red-50 text-red-800"
+            }`}
+          >
+            {cancelFeedback.text}
+          </div>
+        ) : null}
       </DetailCard>
 
       <DetailCard title="Cancelation requests">
@@ -235,6 +358,7 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
               <CancellationRequestCard
                 key={request.id}
                 request={request}
+                showActions={!isOrderCancelled}
                 onDecision={handleCancellationDecision}
               />
             ))}
@@ -248,15 +372,23 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
 function CancellationRequestCard({
   request,
   onDecision,
+  showActions = true,
 }: {
   request: OrderCancellationRequest;
   onDecision: (requestId: string, decision: "approve" | "reject") => void;
+  showActions?: boolean;
 }) {
   const pending = isCancellationPending(request);
 
+  const gridColsClass = showActions
+    ? "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_0.6fr_0.8fr_1fr_0.7fr_auto]"
+    : "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_0.6fr_0.8fr_1fr_0.7fr]";
+
   return (
     <article className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <div className="hidden lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_0.6fr_0.8fr_1fr_0.7fr_auto] lg:gap-3 lg:border-b lg:border-slate-100 lg:bg-slate-50/80 lg:px-4 lg:py-2.5 lg:text-[11px] lg:font-semibold lg:uppercase lg:tracking-wide lg:text-slate-500">
+      <div
+        className={`hidden lg:grid ${gridColsClass} lg:gap-3 lg:border-b lg:border-slate-100 lg:bg-slate-50/80 lg:px-4 lg:py-2.5 lg:text-[11px] lg:font-semibold lg:uppercase lg:tracking-wide lg:text-slate-500`}
+      >
         <span>Initiator</span>
         <span>Initiated date</span>
         <span>Cancelation reason</span>
@@ -264,10 +396,12 @@ function CancellationRequestCard({
         <span>Decided by</span>
         <span>Decided date</span>
         <span>Approved?</span>
-        <span className="text-right">Actions</span>
+        {showActions ? <span className="text-right">Actions</span> : null}
       </div>
 
-      <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1fr)_0.6fr_0.8fr_1fr_0.7fr_auto] lg:items-center lg:gap-3 lg:px-4 lg:py-3">
+      <div
+        className={`grid gap-3 p-4 ${gridColsClass} lg:items-center lg:gap-3 lg:px-4 lg:py-3`}
+      >
         <InfoRow label="Initiator" value={request.initiator} compact />
         <DateRow label="Initiated date" value={request.initiatedDate} compact />
         <InfoRow
@@ -296,28 +430,30 @@ function CancellationRequestCard({
           compact
         />
 
-        <div className="flex flex-col gap-2 lg:items-end">
-          {pending ? (
-            <>
-              <button
-                type="button"
-                onClick={() => onDecision(request.id, "approve")}
-                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                onClick={() => onDecision(request.id, "reject")}
-                className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-hover"
-              >
-                Reject
-              </button>
-            </>
-          ) : (
-            <span className="text-xs font-medium text-slate-500">Resolved</span>
-          )}
-        </div>
+        {showActions ? (
+          <div className="flex flex-col gap-2 lg:items-end">
+            {pending ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onDecision(request.id, "approve")}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDecision(request.id, "reject")}
+                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-hover"
+                >
+                  Reject
+                </button>
+              </>
+            ) : (
+              <span className="text-xs font-medium text-slate-500">Resolved</span>
+            )}
+          </div>
+        ) : null}
       </div>
     </article>
   );
