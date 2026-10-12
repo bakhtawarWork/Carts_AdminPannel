@@ -12,6 +12,7 @@ import {
   cancelOrderByAdmin,
   getOrderDetails,
   getOrders,
+  reviewCancellationRequest,
   type CancelOrderApiResponse,
   type CancelOrderPayload,
   type OrderDetailApiCancelationRequest,
@@ -19,12 +20,17 @@ import {
   type OrderDetailApiHistoryItem,
   type OrderListApiItem,
   type OrdersListQueryParams,
+  type ReviewCancellationApiResponse,
+  type ReviewCancellationPayload,
 } from "@/services/orders";
 
 export {
   cancelOrderByAdmin,
+  reviewCancellationRequest,
   type CancelOrderApiResponse,
   type CancelOrderPayload,
+  type ReviewCancellationApiResponse,
+  type ReviewCancellationPayload,
 };
 
 const DEFAULT_CURRENCY = "QAR";
@@ -41,6 +47,7 @@ export const ORDER_STATUS_OPTIONS = [
 
 export const CANCELLATION_STATUS_OPTIONS = [
   { value: "any", label: "Any" },
+  { value: "cancellation_request", label: "Cancellation Request" },
   { value: "cancelled", label: "Cancelled" },
   { value: "not_cancelled", label: "Not cancelled" },
 ] as const;
@@ -53,8 +60,7 @@ export const UPDATED_LAST_4_DAYS_OPTIONS = [
 
 function toOrdersApiQuery(query: OrdersQuery): OrdersListQueryParams {
   const cancellationStatus =
-    query.cancellationStatus === "cancelled" ||
-    query.cancellationStatus === "not_cancelled"
+    query.cancellationStatus && query.cancellationStatus !== "any"
       ? query.cancellationStatus
       : undefined;
 
@@ -286,16 +292,38 @@ function mapCancellationRequest(
   item: OrderDetailApiCancelationRequest,
   index: number,
 ): OrderCancellationRequest {
+  const decided =
+    typeof item.decided === "boolean"
+      ? item.decided
+      : typeof item.isDecided === "boolean"
+        ? item.isDecided
+        : null;
+
+  const approved =
+    typeof item.approved === "boolean"
+      ? item.approved
+      : typeof item.isApproved === "boolean"
+        ? item.isApproved
+        : null;
+
   return {
     id: clean(item._id) || clean(item.id) || `cancel-${index}`,
-    initiator: clean(item.initiator) || "—",
-    initiatedDate: item.initiatedDate ?? item.initiatedAt ?? "",
+    initiator: clean(item.initiator) || clean(item.initiatorRole) || "—",
+    initiatedDate:
+      item.initiatedDate ?? item.initiatedAt ?? item.createdAt ?? "",
     cancellationReason:
-      clean(item.cancellationReason) || clean(item.cancelationReason),
-    decided: typeof item.decided === "boolean" ? item.decided : null,
-    decidedBy: item.decidedBy ? clean(item.decidedBy) : null,
-    decidedDate: item.decidedDate ?? null,
-    approved: typeof item.approved === "boolean" ? item.approved : null,
+      clean(item.cancellationReason) ||
+      clean(item.cancelationReason) ||
+      clean(item.reason) ||
+      "—",
+    decided,
+    decidedBy: item.decidedBy
+      ? clean(item.decidedBy)
+      : item.decidedByRole
+        ? clean(item.decidedByRole)
+        : null,
+    decidedDate: item.decidedDate ?? item.updatedAt ?? null,
+    approved,
   };
 }
 
@@ -312,6 +340,7 @@ function mapOrderDetail(data: OrderDetailApiData): OrderDetail | null {
     data.cancelationRequests ?? data.cancellationRequests ?? [];
 
   return {
+    _id: clean(data._id) || clean(data.id) || undefined,
     id: String(orderNumber),
     orderNumber,
     vendorId: "",

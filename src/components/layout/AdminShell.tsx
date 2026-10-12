@@ -66,6 +66,7 @@ function pageTitle(pathname: string) {
     return "Edit Offering";
   }
   if (/^\/orders\/[^/]+$/.test(pathname)) return "Order Details";
+  if (/^\/customers\/[^/]+\/orders$/.test(pathname)) return "Customer Orders";
   if (/^\/customers\/[^/]+$/.test(pathname)) return "Customer Details";
   if (/^\/users\/[^/]+\/edit$/.test(pathname)) return "Edit User";
   if (/^\/users\/[^/]+$/.test(pathname)) return "User Details";

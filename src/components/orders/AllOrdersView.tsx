@@ -16,7 +16,11 @@ import {
   formatRelativeTime,
   formatStatusLabel,
 } from "@/lib/orders";
-import type { OrderListTab, OrderRecord } from "@/lib/types";
+import type {
+  CancellationStatusFilter,
+  OrderListTab,
+  OrderRecord,
+} from "@/lib/types";
 
 const PAGE_SIZE = 20;
 
@@ -24,7 +28,7 @@ const EMPTY_FILTERS = {
   orderId: "",
   vendorId: "",
   eventDate: "",
-  cancellationStatus: "any" as const,
+  cancellationStatus: "any" as CancellationStatusFilter,
   orderStatus: "",
   updatedInLast4Days: "any" as const,
 };
@@ -190,12 +194,12 @@ export default function AllOrdersView() {
             />
           </FilterField>
 
-          <FilterField label="Cancellation status" className="xl:w-[150px]">
+          <FilterField label="Cancellation status" className="xl:w-[175px]">
             <select
               value={cancellationStatus}
               onChange={(event) => {
                 setCancellationStatus(
-                  event.target.value as typeof cancellationStatus,
+                  event.target.value as CancellationStatusFilter,
                 );
                 setPage(1);
               }}

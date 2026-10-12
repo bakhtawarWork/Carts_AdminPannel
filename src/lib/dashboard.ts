@@ -4,24 +4,19 @@ import type {
   DashboardStat,
   DashboardSummary,
 } from "@/lib/types";
+import { getDashboardGeneralStats } from "@/services/dashboard";
 
-/**
- * Static dashboard metrics until a real API is available.
- * Replace `fetchDashboardSummary` with a fetch call — keep the return type.
- */
-const MOCK_DASHBOARD_STATS: DashboardStat[] = [
+const STAT_CARDS: Array<Omit<DashboardStat, "value">> = [
   {
     id: "active-vendors",
     label: "Active Vendors",
-    value: 262,
     format: "number",
     icon: "vendors",
     tone: "sky",
   },
   {
     id: "orders-month",
-    label: "Orders (August)",
-    value: 0,
+    label: "Orders (Last month)",
     format: "number",
     icon: "orders",
     tone: "amber",
@@ -29,15 +24,13 @@ const MOCK_DASHBOARD_STATS: DashboardStat[] = [
   {
     id: "orders-total",
     label: "Total Orders",
-    value: 12437,
     format: "number",
     icon: "orders",
     tone: "brand",
   },
   {
     id: "income-month",
-    label: "Total Income (August)",
-    value: 0,
+    label: "Total Income (Last month)",
     format: "currency",
     currency: "QR",
     icon: "income",
@@ -46,7 +39,6 @@ const MOCK_DASHBOARD_STATS: DashboardStat[] = [
   {
     id: "income-total",
     label: "Total Income",
-    value: 16267159,
     format: "currency",
     currency: "QR",
     icon: "income",
@@ -54,8 +46,7 @@ const MOCK_DASHBOARD_STATS: DashboardStat[] = [
   },
   {
     id: "signups-month",
-    label: "Customer Signups (August)",
-    value: 0,
+    label: "Customer Signups (Last month)",
     format: "number",
     icon: "customers",
     tone: "violet",
@@ -63,7 +54,6 @@ const MOCK_DASHBOARD_STATS: DashboardStat[] = [
   {
     id: "signups-total",
     label: "Customer Signups",
-    value: 11271,
     format: "number",
     icon: "customers",
     tone: "violet",
@@ -133,8 +123,13 @@ const MOCK_DASHBOARD_CHARTS: DashboardCharts = {
   ],
 };
 
-function delay(ms = 280) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function toNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
 }
 
 export function formatStatValue(stat: DashboardStat) {
@@ -149,13 +144,25 @@ export function formatStatValue(stat: DashboardStat) {
   return new Intl.NumberFormat("en-US").format(stat.value);
 }
 
-/** Swap this for: `const res = await fetch("/api/dashboard/summary"); return res.json();` */
+/** GET /admin/dashboardgeneralstats — charts stay local until a charts API exists. */
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  await delay();
+  const stats = await getDashboardGeneralStats();
+  const values: Record<string, number> = {
+    "active-vendors": toNumber(stats.activeVendors),
+    "orders-month": toNumber(stats.ordersLastMonth),
+    "orders-total": toNumber(stats.allOrders),
+    "income-month": toNumber(stats.totalIncomeLastMonth),
+    "income-total": toNumber(stats.totalIncome),
+    "signups-month": toNumber(stats.signUpsLastMonth),
+    "signups-total": toNumber(stats.totalSignups),
+  };
 
   return {
-    periodLabel: "August",
-    stats: MOCK_DASHBOARD_STATS.map((stat) => ({ ...stat })),
+    periodLabel: "Last month",
+    stats: STAT_CARDS.map((stat) => ({
+      ...stat,
+      value: values[stat.id] ?? 0,
+    })),
     analysis: MOCK_ANALYSIS_LINKS.map((link) => ({ ...link })),
     charts: {
       trends: MOCK_DASHBOARD_CHARTS.trends.map((point) => ({ ...point })),

@@ -1,27 +1,46 @@
 import type { PopularCategory } from "@/lib/types";
+import { getPopularCategories } from "@/services/dashboard";
 
-/**
- * Static popular categories until a real API is available.
- * Replace `fetchPopularCategories` with a fetch call — keep the return type.
- */
-const MOCK_POPULAR_CATEGORIES: PopularCategory[] = [];
+function clean(value?: string) {
+  return value?.replace(/\s+/g, " ").trim() || "";
+}
 
-function delay(ms = 280) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function toCount(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return 0;
 }
 
 export function formatCategoryDate(value: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
 }
 
-/** Swap this for: `const res = await fetch("/api/analysis/popular-categories"); return res.json();` */
+/** GET /adminadvanced/popular-categories */
 export async function fetchPopularCategories(): Promise<PopularCategory[]> {
-  await delay();
-  return MOCK_POPULAR_CATEGORIES.map((category) => ({ ...category }));
+  const categories = await getPopularCategories();
+
+  return categories.flatMap((item) => {
+    const id = item._id ?? "";
+    if (!id) return [];
+
+    return [
+      {
+        id,
+        name: clean(item.name?.en) || id,
+        nameAr: clean(item.name?.ar) || undefined,
+        createdAt: item.createdAt ?? "",
+        approveStatus: item.approveStatus?.trim() || null,
+        orderCount: toCount(item.numberOfOrders),
+      },
+    ];
+  });
 }

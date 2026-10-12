@@ -1,4 +1,3 @@
-import AllCustomersView from "@/components/customers/AllCustomersView";
 import { fetchCustomerById } from "@/lib/customers";
 import { formatCustomerLastOrdered, formatCustomerMoney } from "@/lib/customers";
 import Link from "next/link";

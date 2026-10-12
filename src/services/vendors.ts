@@ -445,6 +445,8 @@ export type VendorDetailImageApiItem = {
   alt?: string;
   url?: string;
   cdnUrl?: string;
+  cdnurl?: string;
+  cdn_url?: string;
   src?: string;
   path?: string;
   value?: string;

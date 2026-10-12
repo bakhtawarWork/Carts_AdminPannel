@@ -12,6 +12,7 @@ import {
   formatRelativeTime,
   formatStatusLabel,
   isCancellationPending,
+  reviewCancellationRequest,
 } from "@/lib/orders";
 import type { OrderCancellationRequest, OrderDetail } from "@/lib/types";
 
@@ -25,6 +26,13 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelFeedback, setCancelFeedback] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(
+    null,
+  );
+  const [reviewFeedback, setReviewFeedback] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
@@ -56,28 +64,70 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
     };
   }, [orderId]);
 
-  function handleCancellationDecision(
+  async function handleCancellationDecision(
     requestId: string,
     decision: "approve" | "reject",
   ) {
-    setOrder((current) => {
-      if (!current) return current;
-      const now = new Date().toISOString();
-      return {
-        ...current,
-        cancellationRequests: current.cancellationRequests.map((request) =>
-          request.id === requestId
-            ? {
-                ...request,
-                decided: true,
-                decidedBy: "admin",
-                decidedDate: now,
-                approved: decision === "approve",
-              }
-            : request,
-        ),
-      };
-    });
+    if (reviewingRequestId) return;
+
+    setReviewingRequestId(requestId);
+    setReviewFeedback(null);
+
+    const isApproved = decision === "approve";
+    const targetId = order?._id || order?.orderNumber || orderId;
+
+    try {
+      const response = await reviewCancellationRequest(targetId, {
+        isApproved,
+      });
+
+      setReviewFeedback({
+        type: "success",
+        text:
+          response?.message ||
+          `Cancellation request ${isApproved ? "approved" : "rejected"} successfully.`,
+      });
+
+      try {
+        const fresh = await fetchOrderDetail(String(targetId));
+        if (fresh) {
+          setOrder(fresh);
+          return;
+        }
+      } catch {
+        // Fall back to local state update if refetching fails
+      }
+
+      setOrder((current) => {
+        if (!current) return current;
+        const now = new Date().toISOString();
+        return {
+          ...current,
+          cancellationRequests: current.cancellationRequests.map((request) =>
+            request.id === requestId
+              ? {
+                  ...request,
+                  decided: true,
+                  decidedBy: "admin",
+                  decidedDate: now,
+                  approved: isApproved,
+                }
+              : request,
+          ),
+        };
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to process cancellation request.";
+      setReviewFeedback({
+        type: "error",
+        text: message,
+      });
+    } finally {
+      setReviewingRequestId(null);
+    }
   }
 
   async function handleCancelOrder() {
@@ -342,6 +392,18 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
       </DetailCard>
 
       <DetailCard title="Cancelation requests">
+        {reviewFeedback ? (
+          <div
+            className={`mb-3 rounded-lg px-3.5 py-2 text-sm font-medium ${
+              reviewFeedback.type === "success"
+                ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border border-red-200 bg-red-50 text-red-800"
+            }`}
+          >
+            {reviewFeedback.text}
+          </div>
+        ) : null}
+
         {order.cancellationRequests.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center">
             <p className="text-sm font-medium text-slate-700">
@@ -360,6 +422,7 @@ export default function OrderDetailsView({ orderId }: OrderDetailsViewProps) {
                 request={request}
                 showActions={!isOrderCancelled}
                 onDecision={handleCancellationDecision}
+                reviewing={reviewingRequestId === request.id}
               />
             ))}
           </div>
@@ -373,10 +436,12 @@ function CancellationRequestCard({
   request,
   onDecision,
   showActions = true,
+  reviewing = false,
 }: {
   request: OrderCancellationRequest;
   onDecision: (requestId: string, decision: "approve" | "reject") => void;
   showActions?: boolean;
+  reviewing?: boolean;
 }) {
   const pending = isCancellationPending(request);
 
@@ -436,17 +501,19 @@ function CancellationRequestCard({
               <>
                 <button
                   type="button"
+                  disabled={reviewing}
                   onClick={() => onDecision(request.id, "approve")}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Approve
+                  {reviewing ? "Processing…" : "Approve"}
                 </button>
                 <button
                   type="button"
+                  disabled={reviewing}
                   onClick={() => onDecision(request.id, "reject")}
-                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-hover"
+                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Reject
+                  {reviewing ? "Processing…" : "Reject"}
                 </button>
               </>
             ) : (

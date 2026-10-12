@@ -37,6 +37,8 @@ export const ORDER_ENDPOINTS = {
   list: "orders",
   details: "orders/orderDetails",
   cancel: (id: string | number) => `orders/${id}/cancel`,
+  reviewCancellation: (id: string | number) =>
+    `orders/${encodeURIComponent(String(id))}/cancelations/review`,
 } as const;
 
 export const PROMO_CODE_ENDPOINTS = {
@@ -81,6 +83,14 @@ export const SEARCH_CATEGORY_ENDPOINTS = {
 
 export const POLICY_ENDPOINTS = {
   update: "policies/update",
+} as const;
+
+export const DASHBOARD_ENDPOINTS = {
+  generalStats: "/admin/dashboardgeneralstats",
+} as const;
+
+export const CUSTOMER_ENDPOINTS = {
+  list: "customers",
 } as const;
 
 export const POPULAR_COLLECTION_ENDPOINTS = {

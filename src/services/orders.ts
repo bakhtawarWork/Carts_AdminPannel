@@ -38,7 +38,7 @@ export type OrdersListQueryParams = {
   orderId?: string;
   vendorId?: string;
   eventDate?: string;
-  cancellationStatus?: "cancelled" | "not_cancelled";
+  cancellationStatus?: "cancelled" | "not_cancelled" | "cancellation_request" | string;
   status?: string;
   updatedInLast4Days?: "yes" | "no";
 };
@@ -113,17 +113,27 @@ export type OrderDetailApiCancelationRequest = {
   _id?: string;
   id?: string;
   initiator?: string;
+  initiatorRole?: string;
+  initiatorId?: string;
   initiatedDate?: string;
   initiatedAt?: string;
   cancellationReason?: string;
   cancelationReason?: string;
+  reason?: string;
   decided?: boolean | null;
+  isDecided?: boolean | null;
   decidedBy?: string | null;
+  decidedByRole?: string | null;
   decidedDate?: string | null;
   approved?: boolean | null;
+  isApproved?: boolean | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type OrderDetailApiData = {
+  _id?: string;
+  id?: string;
   orderId?: number | string;
   status?: string;
   orderDetails?: {
@@ -219,4 +229,38 @@ export async function cancelOrderByAdmin(
 
   return data;
 }
+
+export type ReviewCancellationPayload = {
+  isApproved: boolean;
+};
+
+export type ReviewCancellationApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    order?: unknown;
+  };
+};
+
+/** POST /admin/orders/:id/cancelations/review */
+export async function reviewCancellationRequest(
+  orderId: string | number,
+  payload: ReviewCancellationPayload,
+) {
+  const data = await api.post<ReviewCancellationApiResponse>(
+    ORDER_ENDPOINTS.reviewCancellation(orderId),
+    payload,
+  );
+
+  if (data?.status === false) {
+    throw new ApiError(
+      data.message ?? "Could not review cancellation request.",
+      400,
+      data,
+    );
+  }
+
+  return data;
+}
+
 

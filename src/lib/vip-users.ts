@@ -1,50 +1,55 @@
 import type { VipUser, VipUsersQuery, VipUsersResponse } from "@/lib/types";
-
-/**
- * Static VIP users until a real API is available.
- * Replace `fetchVipUsers` with a fetch call — keep the query/response shape.
- */
-const MOCK_VIP_USERS: VipUser[] = [];
-
-function delay(ms = 280) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { getVipUsers } from "@/services/dashboard";
 
 export function formatMoneySpent(amount: number, currency = "QR") {
   return `${amount.toLocaleString("en-US")} ${currency}`;
 }
 
-function filterVipUsers(users: VipUser[], query: VipUsersQuery) {
-  const nameNeedle = query.name?.trim().toLowerCase() ?? "";
-  const phoneNeedle = query.phone?.trim().toLowerCase() ?? "";
-
-  return users.filter((user) => {
-    const matchesName =
-      !nameNeedle || user.name.toLowerCase().includes(nameNeedle);
-    const matchesPhone =
-      !phoneNeedle || user.phone.toLowerCase().includes(phoneNeedle);
-    return matchesName && matchesPhone;
-  });
+function toCount(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return 0;
 }
 
-/**
- * Swap this for a real API call, e.g.
- * `fetch(\`/api/analysis/vip-users?name=...\`)`
- */
+function mapUser(item: {
+  id?: string;
+  name?: string;
+  mobile?: string;
+  noOfOrders?: number;
+  totalMoneySpent?: number;
+}): VipUser | null {
+  const id = item.id?.trim();
+  if (!id) return null;
+
+  return {
+    id,
+    name: item.name?.replace(/\s+/g, " ").trim() || "—",
+    phone: item.mobile?.trim() || "",
+    orderCount: toCount(item.noOfOrders),
+    totalSpent: toCount(item.totalMoneySpent),
+    currency: "QR",
+  };
+}
+
+/** GET /adminadvanced/vip-users — skip/take from the current page. */
 export async function fetchVipUsers(
   query: VipUsersQuery,
 ): Promise<VipUsersResponse> {
-  await delay();
-
-  const filtered = filterVipUsers(MOCK_VIP_USERS, query);
+  const page = Math.max(1, query.page);
   const pageSize = Math.max(1, query.pageSize);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const page = Math.min(Math.max(1, query.page), totalPages);
-  const start = (page - 1) * pageSize;
+  const payload = await getVipUsers({
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+    name: query.name,
+    mobile: query.phone,
+  });
+
+  const items = payload.users
+    .map(mapUser)
+    .filter((user): user is VipUser => user !== null);
 
   return {
-    items: filtered.slice(start, start + pageSize).map((user) => ({ ...user })),
-    total: filtered.length,
+    items,
+    total: toCount(payload.total) || items.length,
     page,
     pageSize,
   };

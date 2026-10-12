@@ -195,6 +195,10 @@ export const CUSTOMERS_SECTION_META: Record<
     title: "Customers",
     description: "Browse customers, order history, and spend totals.",
   },
+  "/customers/[id]/orders": {
+    title: "Customer Orders",
+    description: "Order history for a single customer.",
+  },
 };
 
 export const USERS_SECTION_META: Record<

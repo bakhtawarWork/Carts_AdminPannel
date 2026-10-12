@@ -132,9 +132,7 @@ export function buildPopularCollectionFormData(
   if (payload.isPopular !== undefined) {
     formData.append("isPopular", String(payload.isPopular));
   }
-  if (payload.order !== undefined) {
-    formData.append("order", String(payload.order));
-  }
+  formData.append("order", String(Math.round(Number(payload.order ?? 1))));
   if (payload.legacyServiceCategory !== undefined) {
     formData.append("legacyServiceCategory", payload.legacyServiceCategory);
   }

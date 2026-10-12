@@ -161,13 +161,7 @@ function CustomerRow({ customer }: { customer: CustomerRecord }) {
         {formatCustomerLastOrdered(customer.lastOrderedAt)}
       </td>
       <td className="px-5 py-4">
-        <Link
-          href={`/customers/${customer.id}`}
-          aria-label={`View ${customer.name}`}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
-        >
-          <ViewIcon />
-        </Link>
+        <CustomerActions customer={customer} />
       </td>
     </tr>
   );
@@ -178,13 +172,7 @@ function CustomerCard({ customer }: { customer: CustomerRecord }) {
     <article className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
       <div className="flex items-start justify-between gap-3">
         <p className="font-semibold text-slate-900">{customer.name}</p>
-        <Link
-          href={`/customers/${customer.id}`}
-          aria-label={`View ${customer.name}`}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
-        >
-          <ViewIcon />
-        </Link>
+        <CustomerActions customer={customer} compact />
       </div>
       <dl className="mt-3 space-y-1.5 text-sm">
         <div className="flex justify-between gap-3">
@@ -208,16 +196,35 @@ function CustomerCard({ customer }: { customer: CustomerRecord }) {
   );
 }
 
-function ViewIcon() {
+function CustomerActions({
+  customer,
+  compact = false,
+}: {
+  customer: CustomerRecord;
+  compact?: boolean;
+}) {
+  const buttonClass = compact
+    ? "inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition"
+    : "inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold transition";
+
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3.5 12s3.5-6.5 8.5-6.5S20.5 12 20.5 12 17 18.5 12 18.5 3.5 12 3.5 12Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.75" />
-    </svg>
+    <div
+      className={`flex ${compact ? "shrink-0 flex-col gap-1.5" : "flex-wrap gap-1.5"}`}
+      role="group"
+      aria-label={`Actions for ${customer.name}`}
+    >
+      <Link
+        href={`/customers/${customer.id}`}
+        className={`${buttonClass} border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
+      >
+        View profile
+      </Link>
+      <Link
+        href={`/customers/${customer.id}/orders`}
+        className={`${buttonClass} bg-brand text-white shadow-sm hover:bg-brand-hover`}
+      >
+        View orders
+      </Link>
+    </div>
   );
 }

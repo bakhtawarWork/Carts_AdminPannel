@@ -518,7 +518,7 @@ export default function VendorFormView({
                     {form.logo ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={form.logo.url}
+                        src={form.logo.cdnUrl || form.logo.url}
                         alt={form.logo.alt}
                         className="h-full w-full object-cover"
                       />
@@ -737,7 +737,7 @@ export default function VendorFormView({
                           {form.logo ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={form.logo.url}
+                              src={form.logo.cdnUrl || form.logo.url}
                               alt={form.logo.alt}
                               className="h-28 w-28 rounded-xl object-cover shadow-sm"
                             />
@@ -1740,7 +1740,7 @@ function ServiceImagePicker({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={image.url}
+                src={image.cdnUrl || image.url}
                 alt={image.alt}
                 className="h-24 w-full object-cover"
               />
@@ -1840,7 +1840,7 @@ function ImagePicker({
         <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={image.url}
+            src={image.cdnUrl || image.url}
             alt={image.alt}
             className="h-24 w-full object-cover"
           />

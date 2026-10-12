@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { fetchOrders } from "@/lib/orders";
-import type { OrderListTab, OrderRecord } from "@/lib/types";
+import type {
+  CancellationStatusFilter,
+  OrderListTab,
+  OrderRecord,
+} from "@/lib/types";
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -11,7 +15,7 @@ export type OrderFilters = {
   orderId: string;
   vendorId: string;
   eventDate: string;
-  cancellationStatus: "any" | "cancelled" | "not_cancelled";
+  cancellationStatus: CancellationStatusFilter;
   orderStatus: string;
   updatedInLast4Days: "any" | "yes" | "no";
   page: number;

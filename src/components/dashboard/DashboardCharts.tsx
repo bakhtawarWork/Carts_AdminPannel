@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -33,12 +31,6 @@ const tooltipStyle = {
   fontSize: 12,
 };
 
-function formatIncome(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-  return String(value);
-}
-
 export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) {
   return (
     <section className="space-y-4">
@@ -50,114 +42,11 @@ export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) 
           Performance overview
         </h3>
         <p className="mt-0.5 text-sm text-slate-500">
-          Trends and distribution across orders, income, and vendors.
+          Distribution across orders, vendors, and signups.
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <article className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:p-5 xl:col-span-2">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900">
-                Orders & income trend
-              </h4>
-              <p className="text-xs text-slate-500">Last 6 months</p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-xs font-medium">
-              <span className="inline-flex items-center gap-1.5 text-slate-600">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: BRAND }}
-                />
-                Orders
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-slate-600">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: EMERALD }}
-                />
-                Income
-              </span>
-            </div>
-          </div>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={charts.trends}
-                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="ordersFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={BRAND} stopOpacity={0.22} />
-                    <stop offset="100%" stopColor={BRAND} stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="incomeFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={EMERALD} stopOpacity={0.18} />
-                    <stop offset="100%" stopColor={EMERALD} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fill: SLATE, fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  yAxisId="orders"
-                  tick={{ fill: SLATE, fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={40}
-                />
-                <YAxis
-                  yAxisId="income"
-                  orientation="right"
-                  tickFormatter={formatIncome}
-                  tick={{ fill: SLATE, fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value, name) => {
-                    const numeric = typeof value === "number" ? value : Number(value);
-                    if (name === "income") {
-                      return [
-                        `${new Intl.NumberFormat("en-US").format(numeric)} QR`,
-                        "Income",
-                      ];
-                    }
-                    return [
-                      new Intl.NumberFormat("en-US").format(numeric),
-                      name === "orders" ? "Orders" : "Signups",
-                    ];
-                  }}
-                />
-                <Area
-                  yAxisId="orders"
-                  type="monotone"
-                  dataKey="orders"
-                  stroke={BRAND}
-                  strokeWidth={2.5}
-                  fill="url(#ordersFill)"
-                  name="orders"
-                />
-                <Area
-                  yAxisId="income"
-                  type="monotone"
-                  dataKey="income"
-                  stroke={EMERALD}
-                  strokeWidth={2.5}
-                  fill="url(#incomeFill)"
-                  name="income"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
-
+      <div className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:p-5">
           <div className="mb-4">
             <h4 className="text-sm font-semibold text-slate-900">
@@ -202,9 +91,7 @@ export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) 
             </ResponsiveContainer>
           </div>
         </article>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:p-5">
           <div className="mb-4">
             <h4 className="text-sm font-semibold text-slate-900">

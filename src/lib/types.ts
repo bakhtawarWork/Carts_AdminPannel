@@ -635,12 +635,18 @@ export type OrderVendorOption = {
   label: string;
 };
 
+export type CancellationStatusFilter =
+  | "any"
+  | "cancellation_request"
+  | "cancelled"
+  | "not_cancelled";
+
 export type OrdersQuery = {
   tab: OrderListTab;
   orderId?: string;
   vendorId?: string;
   eventDate?: string;
-  cancellationStatus?: "any" | "cancelled" | "not_cancelled";
+  cancellationStatus?: CancellationStatusFilter | string;
   orderStatus?: string;
   updatedInLast4Days?: "any" | "yes" | "no";
   page: number;
@@ -700,6 +706,7 @@ export type OrderVendorDetail = {
 };
 
 export type OrderDetail = OrderRecord & {
+  _id?: string;
   subTotal: number;
   deliveryCharges: number;
   address: OrderCustomerAddress;
@@ -772,6 +779,7 @@ export type VendorServiceId =
 export type VendorImageAsset = {
   id: string;
   url: string;
+  cdnUrl?: string;
   title: string;
   alt: string;
   key?: string;

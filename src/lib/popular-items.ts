@@ -1,17 +1,34 @@
 import type { PopularItem } from "@/lib/types";
+import { getPopularOfferings } from "@/services/dashboard";
 
-/**
- * Static popular items until a real API is available.
- * Replace `fetchPopularItems` with a fetch call — keep the return type.
- */
-const MOCK_POPULAR_ITEMS: PopularItem[] = [];
-
-function delay(ms = 280) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function clean(value?: string) {
+  return value?.replace(/\s+/g, " ").trim() || "";
 }
 
-/** Swap this for: `const res = await fetch("/api/analysis/popular-items"); return res.json();` */
+function toCount(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return 0;
+}
+
+/** GET /adminadvanced/popular-offerings */
 export async function fetchPopularItems(): Promise<PopularItem[]> {
-  await delay();
-  return MOCK_POPULAR_ITEMS.map((item) => ({ ...item }));
+  const offers = await getPopularOfferings();
+
+  return offers.flatMap((item) => {
+    const id = item._id ?? "";
+    if (!id) return [];
+
+    return [
+      {
+        id,
+        published: Boolean(item.published) && !item._deleted,
+        imageUrl: item.images?.find((image) => image.cdnUrl)?.cdnUrl ?? "",
+        name: clean(item.name?.en) || id,
+        nameAr: clean(item.name?.ar) || undefined,
+        vendor: clean(item._vendor?.name?.en),
+        vendorAr: clean(item._vendor?.name?.ar) || undefined,
+        orderCount: toCount(item.numberOfOrders),
+      },
+    ];
+  });
 }

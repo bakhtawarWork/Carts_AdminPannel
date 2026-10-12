@@ -23,7 +23,9 @@ export function PublishedBadge({ published }: { published: boolean }) {
 export function AnalysisThumb({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-      <Image src={src} alt={alt} fill className="object-cover" sizes="96px" />
+      {src ? (
+        <Image src={src} alt={alt} fill className="object-cover" sizes="96px" />
+      ) : null}
     </div>
   );
 }

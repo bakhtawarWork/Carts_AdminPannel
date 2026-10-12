@@ -107,18 +107,49 @@ function numberText(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? String(parsed) : "";
 }
 
-function imageSource(item: VendorDetailImageApiItem | string) {
-  if (typeof item === "string") return item.trim();
+function resolveCdnUrl(url?: string): string {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+  if (trimmed.includes("carts-prod-assets.s3.eu-central-1.amazonaws.com")) {
+    return trimmed.replace(
+      "https://carts-prod-assets.s3.eu-central-1.amazonaws.com",
+      "https://dqvxie7kr8emt.cloudfront.net",
+    );
+  }
+  if (trimmed.includes("carts-qa.s3.ap-southeast-1.amazonaws.com")) {
+    return trimmed.replace(
+      "https://carts-qa.s3.ap-southeast-1.amazonaws.com",
+      "https://dpnc6bgmngzpy.cloudfront.net",
+    );
+  }
+  return trimmed;
+}
+
+function imageSource(item: VendorDetailImageApiItem | string): string {
+  if (typeof item === "string") return resolveCdnUrl(item);
+  const raw = item as Record<string, unknown>;
+
+  // 1. CloudFront CDN URL has highest priority
+  const cdnCandidate =
+    (typeof item.cdnUrl === "string" && item.cdnUrl.trim()) ||
+    (typeof raw.cdnurl === "string" && (raw.cdnurl as string).trim()) ||
+    (typeof raw.cdn_url === "string" && (raw.cdn_url as string).trim()) ||
+    "";
+
+  if (cdnCandidate) return resolveCdnUrl(cdnCandidate);
+
+  // 2. Fall back to other fields, mapping direct S3 to CloudFront CDN
   const candidates = [
     item.url,
     item.src,
     item.path,
     item.value,
     item.image,
-    item.cdnUrl,
   ];
   for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+    if (typeof candidate === "string" && candidate.trim()) {
+      return resolveCdnUrl(candidate);
+    }
   }
   return "";
 }
@@ -129,8 +160,16 @@ function extractVendorImageKey(item: VendorDetailImageApiItem | string): string 
     return match ? match[1] : "";
   }
   if (item.key && item.key.trim()) return item.key.trim();
+  const raw = item as Record<string, unknown>;
   const target =
-    item.url || item.src || item.path || item.value || item.image || item.cdnUrl || "";
+    item.cdnUrl ||
+    (typeof raw.cdnurl === "string" ? raw.cdnurl : "") ||
+    item.url ||
+    item.src ||
+    item.path ||
+    item.value ||
+    item.image ||
+    "";
   const match = target.match(/(vendors\/[^?#]+)/);
   return match ? match[1] : "";
 }
@@ -169,6 +208,13 @@ function mapImage(
   if (!url) return null;
 
   const record = typeof item === "string" ? null : item;
+  const raw = (record || {}) as Record<string, unknown>;
+  const cdnUrl = resolveCdnUrl(
+    cleanText(record?.cdnUrl) ||
+      cleanText(raw.cdnurl as string) ||
+      cleanText(raw.cdn_url as string) ||
+      url,
+  );
   const title = cleanText(record?.name || record?.title) || fallbackTitle;
   const key = extractVendorImageKey(item);
   return {
@@ -176,7 +222,8 @@ function mapImage(
       record?._id ||
       record?.id ||
       `img-${Math.random().toString(16).slice(2, 10)}`,
-    url,
+    url: cdnUrl || url,
+    cdnUrl: cdnUrl || url,
     title,
     alt: cleanText(record?.alt) || title,
     key: key || undefined,

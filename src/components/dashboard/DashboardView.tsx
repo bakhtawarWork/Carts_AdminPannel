@@ -36,11 +36,8 @@ export default function DashboardView() {
               />
             ))}
           </div>
-          <div className="grid gap-4 xl:grid-cols-3">
-            <div className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white xl:col-span-2" />
-            <div className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white" />
-          </div>
           <div className="grid gap-4 lg:grid-cols-2">
+            <div className="h-72 animate-pulse rounded-2xl border border-slate-200 bg-white" />
             <div className="h-72 animate-pulse rounded-2xl border border-slate-200 bg-white" />
             <div className="h-72 animate-pulse rounded-2xl border border-slate-200 bg-white" />
           </div>

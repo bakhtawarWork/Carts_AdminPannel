@@ -249,9 +249,7 @@ export async function savePopularCollectionForm(
     formData.append("legacyServiceCategory", form.serviceCategoryId);
   }
 
-  if (form.order !== undefined) {
-    formData.append("order", String(form.order));
-  }
+  formData.append("order", String(Math.round(Number(form.order ?? 1))));
 
   let fileToUpload: File | Blob | null = form.imageFile ?? null;
   if (!fileToUpload && form.imageUrl?.startsWith("data:")) {
