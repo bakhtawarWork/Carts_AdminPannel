@@ -52,7 +52,11 @@ export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) 
             <h4 className="text-sm font-semibold text-slate-900">
               Orders by service
             </h4>
-            <p className="text-xs text-slate-500">Share of total volume</p>
+            <p className="text-xs text-slate-500">
+              {charts.ordersByServiceMonth
+                ? `Share of orders · ${charts.ordersByServiceMonth}`
+                : "Share of total volume"}
+            </p>
           </div>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -80,6 +84,7 @@ export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) 
                     `${typeof value === "number" ? value : Number(value)}%`,
                     "Share",
                   ]}
+                  labelFormatter={(label) => String(label)}
                 />
                 <Legend
                   verticalAlign="bottom"
@@ -97,9 +102,18 @@ export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) 
             <h4 className="text-sm font-semibold text-slate-900">
               Top vendors by orders
             </h4>
-            <p className="text-xs text-slate-500">Leading partners this period</p>
+            <p className="text-xs text-slate-500">
+              {charts.topVendorsMonth
+                ? `Leading partners · ${charts.topVendorsMonth}`
+                : "Leading partners this period"}
+            </p>
           </div>
           <div className="h-64 w-full">
+            {charts.topVendors.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                No vendor orders for this period.
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={charts.topVendors}
@@ -133,6 +147,7 @@ export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) 
                 <Bar dataKey="orders" fill={BRAND} radius={[0, 8, 8, 0]} barSize={18} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </article>
 
@@ -141,7 +156,11 @@ export function DashboardChartsSection({ charts }: { charts: DashboardCharts }) 
             <h4 className="text-sm font-semibold text-slate-900">
               Customer signups
             </h4>
-            <p className="text-xs text-slate-500">Monthly acquisition trend</p>
+            <p className="text-xs text-slate-500">
+              {charts.signupsPeriod
+                ? `Monthly signups · ${charts.signupsPeriod}`
+                : "Monthly acquisition trend"}
+            </p>
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">

@@ -124,9 +124,12 @@ export default function OfferingCategoriesView() {
         arabicName: editArabic,
       });
       cancelEdit();
-      await loadCategories(page);
-    } catch {
-      setError("Could not update category.");
+      setSuccess("Category updated successfully.");
+      await loadCategories(page, true);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not update category.",
+      );
     } finally {
       setSavingId(null);
     }
@@ -137,11 +140,14 @@ export default function OfferingCategoriesView() {
     setError(null);
     setSuccess(null);
     try {
-      await deleteOfferingCategory(id);
+      const result = await deleteOfferingCategory(id);
       if (editingId === id) cancelEdit();
-      await loadCategories(page);
-    } catch {
-      setError("Could not delete category.");
+      setSuccess(result.message);
+      await loadCategories(page, true);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not delete category.",
+      );
     } finally {
       setSavingId(null);
     }

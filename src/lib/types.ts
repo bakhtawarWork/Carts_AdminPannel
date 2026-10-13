@@ -58,6 +58,9 @@ export type DashboardCharts = {
   trends: DashboardTrendPoint[];
   categoryShare: DashboardCategoryShare[];
   topVendors: DashboardVendorBar[];
+  ordersByServiceMonth?: string;
+  topVendorsMonth?: string;
+  signupsPeriod?: string;
 };
 
 export type PopularItem = {
@@ -167,6 +170,37 @@ export type CustomerRecord = {
   totalSpent: number;
   currency: string;
   lastOrderedAt: string;
+};
+
+export type CustomerOrderRecord = {
+  id: string;
+  orderId: string;
+  status: string;
+  eventDate: string;
+  createdAt: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  totalPrice: number;
+  currency: string;
+};
+
+export type CustomerProfile = {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  preferredLanguage: string;
+  smsVerified: boolean;
+  isBlocked: boolean;
+  createdAt: string;
+  totalNoOfOrders: number;
+  successfulOrders: number;
+  cancelledOrders: number;
+  activeOrders: number;
+  rejectedOrders: number;
+  totalMoneySpent: number;
+  successfulOrderCount: number;
+  currency: string;
 };
 
 export type CustomersQuery = {

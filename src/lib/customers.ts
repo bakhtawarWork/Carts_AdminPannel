@@ -3,9 +3,14 @@ import type {
   CustomersQuery,
   CustomersResponse,
 } from "@/lib/types";
+import type { CustomerOrderRecord, CustomerProfile } from "@/lib/types";
 import {
+  getCustomerOrderDetails,
+  getCustomerOrders,
   getCustomers,
   type CustomerApiItem,
+  type CustomerOrderApiItem,
+  type CustomerUserDetailsApi,
 } from "@/services/customers";
 
 const customerCache = new Map<string, CustomerRecord>();
@@ -51,6 +56,10 @@ export function formatCustomerMoney(amount: number, currency = "QR") {
 }
 
 export function formatCustomerLastOrdered(value: string) {
+  return formatCustomerDateTime(value);
+}
+
+export function formatCustomerDateTime(value: string) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -62,6 +71,108 @@ export function formatCustomerLastOrdered(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+function moneySpentFromDetails(
+  value: CustomerUserDetailsApi["totalMoneySpent"],
+) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { total: value, count: 0 };
+  }
+
+  if (!Array.isArray(value) || value.length === 0) {
+    return { total: 0, count: 0 };
+  }
+
+  const total = value.reduce(
+    (sum, entry) => sum + toCount(entry.total),
+    0,
+  );
+  const count = value.reduce((sum, entry) => sum + toCount(entry.count), 0);
+  return { total, count };
+}
+
+function mapCustomerProfile(details: CustomerUserDetailsApi): CustomerProfile | null {
+  const id = details._id ?? details.id;
+  if (!id) return null;
+
+  const spend = moneySpentFromDetails(details.totalMoneySpent);
+
+  return {
+    id,
+    name: cleanName(details.name) || "—",
+    email: cleanName(details.email) || "—",
+    mobile: cleanName(details.mobile) || "—",
+    preferredLanguage: cleanName(details.preferredLanguage) || "—",
+    smsVerified: Boolean(details.smsVerified),
+    isBlocked: Boolean(details.isBlocked),
+    createdAt: details.createdAt ?? "",
+    totalNoOfOrders: toCount(details.totalNoOfOrders),
+    successfulOrders: toCount(details.successfulOrders),
+    cancelledOrders: toCount(details.cancelledOrders),
+    activeOrders: toCount(details.activeOrders),
+    rejectedOrders: toCount(details.rejectedOrders),
+    totalMoneySpent: spend.total,
+    successfulOrderCount: spend.count,
+    currency: "QR",
+  };
+}
+
+function mapCustomerOrder(item: CustomerOrderApiItem): CustomerOrderRecord | null {
+  const id = item._id ?? item.id;
+  if (!id) return null;
+
+  const orderId =
+    item.orderId !== undefined && item.orderId !== null
+      ? String(item.orderId)
+      : id;
+
+  return {
+    id,
+    orderId,
+    status: cleanName(item.status) || "—",
+    eventDate: item.eventDate ?? "",
+    createdAt: item.createdAt ?? "",
+    paymentMethod: cleanName(item.payment?.method) || "—",
+    paymentStatus: cleanName(item.payment?.status) || "—",
+    totalPrice: toCount(item.payment?.totalPrice),
+    currency: "QR",
+  };
+}
+
+/** GET /admin/customers/:id/orders */
+export async function fetchCustomerOrders(
+  customerId: string,
+): Promise<CustomerOrderRecord[]> {
+  const orders = await getCustomerOrders(customerId);
+
+  return orders
+    .map(mapCustomerOrder)
+    .filter((order): order is CustomerOrderRecord => order !== null)
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+    );
+}
+
+/** GET /admin/customers/:id/order-details */
+export async function fetchCustomerProfile(
+  id: string,
+): Promise<CustomerProfile | null> {
+  const details = await getCustomerOrderDetails(id);
+  const profile = mapCustomerProfile(details);
+  if (!profile) return null;
+
+  customerCache.set(profile.id, {
+    id: profile.id,
+    name: profile.name,
+    orderCount: profile.totalNoOfOrders,
+    totalSpent: profile.totalMoneySpent,
+    currency: profile.currency,
+    lastOrderedAt: "",
+  });
+
+  return profile;
 }
 
 /** GET /admin/customers */

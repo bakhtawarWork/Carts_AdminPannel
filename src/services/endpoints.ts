@@ -6,6 +6,10 @@ export const OFFERING_ENDPOINTS = {
   list: "offerings",
   details: "offerings/details",
   categories: "offerings/categories",
+  updateCategory: (id: string) =>
+    `offering/category/updateOffering/${encodeURIComponent(id)}`,
+  deleteCategory: (id: string) =>
+    `offering/category/deleteOffering/${encodeURIComponent(id)}`,
   byVendor: "offerings/vendors",
   approvalList: "/offerings/approval-list",
   approve: "offerings/approve",
@@ -89,8 +93,17 @@ export const DASHBOARD_ENDPOINTS = {
   generalStats: "/admin/dashboardgeneralstats",
 } as const;
 
+export const ORDER_STATS_ENDPOINTS = {
+  vendorServiceCount: "order-stats/stats/vendor-service-count",
+  customerSignups: "order-stats/stats/customer-signups",
+  topVendors: "order-stats/stats/top-vendors",
+} as const;
+
 export const CUSTOMER_ENDPOINTS = {
   list: "customers",
+  orderDetails: (id: string) =>
+    `customers/${encodeURIComponent(id)}/order-details`,
+  orders: (id: string) => `customers/${encodeURIComponent(id)}/orders`,
 } as const;
 
 export const POPULAR_COLLECTION_ENDPOINTS = {

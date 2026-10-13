@@ -1,24 +1,49 @@
-import { createOfferingCategoryApi, getOfferingCategories } from "@/services/offerings";
+import {
+  createOfferingCategoryApi,
+  deleteOfferingCategoryApi,
+  getOfferingCategories,
+  updateOfferingCategoryApi,
+  type OfferingCategoryApiItem,
+} from "@/services/offerings";
 import type {
   OfferingCategoriesQuery,
   OfferingCategoriesResponse,
   OfferingCategoryRecord,
 } from "@/lib/types";
 
-function mapCategory(item: {
-  id?: string;
-  _id?: string;
-  name?: string;
-  approveStatus?: string;
-  nameObj?: { en?: string; ar?: string };
-}): OfferingCategoryRecord | null {
+function cleanName(value?: string) {
+  return value?.replace(/\s+/g, " ").trim() || "";
+}
+
+function namesFromApiItem(item: OfferingCategoryApiItem) {
+  if (item.nameObj) {
+    return {
+      en: cleanName(item.nameObj.en),
+      ar: cleanName(item.nameObj.ar),
+    };
+  }
+
+  if (item.name && typeof item.name === "object") {
+    return {
+      en: cleanName(item.name.en),
+      ar: cleanName(item.name.ar),
+    };
+  }
+
+  const plain = typeof item.name === "string" ? cleanName(item.name) : "";
+  return { en: plain, ar: "" };
+}
+
+function mapCategory(item: OfferingCategoryApiItem): OfferingCategoryRecord | null {
   const id = item.id ?? item._id ?? "";
   if (!id) return null;
 
+  const { en, ar } = namesFromApiItem(item);
+
   return {
     id,
-    englishName: item.nameObj?.en?.trim() || item.name?.trim() || "",
-    arabicName: item.nameObj?.ar?.trim() || "",
+    englishName: en || id,
+    arabicName: ar,
     approveStatus: item.approveStatus?.trim() || null,
   };
 }
@@ -102,26 +127,40 @@ export async function createOfferingCategory(input: {
   };
 }
 
+/** PATCH /admin/offering/category/updateOffering/:id */
 export async function updateOfferingCategory(
   id: string,
   input: { englishName: string; arabicName: string },
 ) {
-  await ensureCategoriesLoaded();
-  const index = offeringCategoriesState.findIndex((item) => item.id === id);
-  if (index === -1) return null;
+  const response = await updateOfferingCategoryApi(id, {
+    name: {
+      en: input.englishName.trim(),
+      ar: input.arabicName.trim(),
+    },
+  });
 
-  offeringCategoriesState[index] = {
-    ...offeringCategoriesState[index],
-    englishName: input.englishName.trim(),
-    arabicName: input.arabicName.trim(),
-  };
-  return { ...offeringCategoriesState[index] };
+  const updated = response.data ? mapCategory(response.data) : null;
+  if (updated) {
+    const index = offeringCategoriesState.findIndex((item) => item.id === id);
+    if (index === -1) {
+      offeringCategoriesState = [...offeringCategoriesState, updated];
+    } else {
+      offeringCategoriesState = offeringCategoriesState.map((item, itemIndex) =>
+        itemIndex === index ? updated : item,
+      );
+    }
+    return updated;
+  }
+
+  await loadCategoriesFromApi();
+  return getCachedOfferingCategory(id);
 }
 
+/** DELETE /admin/offering/category/deleteOffering/:id */
 export async function deleteOfferingCategory(id: string) {
-  await ensureCategoriesLoaded();
-  const next = offeringCategoriesState.filter((item) => item.id !== id);
-  if (next.length === offeringCategoriesState.length) return false;
-  offeringCategoriesState = next;
-  return true;
+  const { message } = await deleteOfferingCategoryApi(id);
+  offeringCategoriesState = offeringCategoriesState.filter(
+    (item) => item.id !== id,
+  );
+  return { deleted: true, message };
 }

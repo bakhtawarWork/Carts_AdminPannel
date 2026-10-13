@@ -1,15 +1,17 @@
 import { ApiError, api } from "@/services/api";
 import { OFFERING_ENDPOINTS } from "@/services/endpoints";
 
+export type OfferingCategoryName = {
+  en?: string;
+  ar?: string;
+};
+
 export type OfferingCategoryApiItem = {
   id?: string;
   _id?: string;
-  name?: string;
+  name?: string | OfferingCategoryName;
   approveStatus?: string;
-  nameObj?: {
-    en?: string;
-    ar?: string;
-  };
+  nameObj?: OfferingCategoryName;
 };
 
 export type OfferingCategoriesApiResponse = {
@@ -542,6 +544,76 @@ export async function createOfferingCategoryApi(
   }
 
   return { id, message: response.message };
+}
+
+export type UpdateOfferingCategoryPayload = {
+  name: {
+    en: string;
+    ar: string;
+  };
+};
+
+export type UpdateOfferingCategoryApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: OfferingCategoryApiItem & {
+    _id?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+};
+
+/** PATCH /admin/offering/category/updateOffering/:id */
+export async function updateOfferingCategoryApi(
+  id: string,
+  payload: UpdateOfferingCategoryPayload,
+) {
+  const response = await api.patch<UpdateOfferingCategoryApiResponse>(
+    OFFERING_ENDPOINTS.updateCategory(id),
+    payload,
+  );
+
+  if (response?.status === false) {
+    throw new ApiError(
+      response.message ?? "Could not update offering category.",
+      400,
+      response,
+    );
+  }
+
+  return response;
+}
+
+export type DeleteOfferingCategoryApiResponse = {
+  status?: boolean;
+  message?: string | number;
+  data?: string;
+};
+
+/** DELETE /admin/offering/category/deleteOffering/:id */
+export async function deleteOfferingCategoryApi(id: string) {
+  const response = await api.delete<DeleteOfferingCategoryApiResponse>(
+    OFFERING_ENDPOINTS.deleteCategory(id),
+  );
+
+  if (response?.status === false) {
+    const message =
+      typeof response.message === "string"
+        ? response.message
+        : typeof response.data === "string"
+          ? response.data
+          : "Could not delete offering category.";
+    throw new ApiError(message, 400, response);
+  }
+
+  const message =
+    typeof response.data === "string" && response.data.trim()
+      ? response.data
+      : typeof response.message === "string"
+        ? response.message
+        : "Offering category deleted successfully";
+
+  return { message };
 }
 
 export type CopyOfferingPayload = {

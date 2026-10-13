@@ -5,6 +5,12 @@ import type {
   DashboardSummary,
 } from "@/lib/types";
 import { getDashboardGeneralStats } from "@/services/dashboard";
+import {
+  getCustomerSignupStats,
+  getTopVendorOrderStats,
+  getVendorServiceOrderStats,
+  type TopVendorStatsItem,
+} from "@/services/order-stats";
 
 const STAT_CARDS: Array<Omit<DashboardStat, "value">> = [
   {
@@ -98,30 +104,21 @@ const MOCK_ANALYSIS_LINKS: AnalysisLink[] = [
   },
 ];
 
-const MOCK_DASHBOARD_CHARTS: DashboardCharts = {
-  trends: [
-    { month: "Mar", orders: 920, income: 1180000, signups: 640 },
-    { month: "Apr", orders: 1040, income: 1325000, signups: 710 },
-    { month: "May", orders: 1185, income: 1492000, signups: 790 },
-    { month: "Jun", orders: 1310, income: 1618000, signups: 860 },
-    { month: "Jul", orders: 1460, income: 1784000, signups: 940 },
-    { month: "Aug", orders: 980, income: 1210000, signups: 520 },
-  ],
-  categoryShare: [
-    { name: "Catering", value: 34 },
-    { name: "Delivery", value: 28 },
-    { name: "Setups", value: 14 },
-    { name: "Hospitality", value: 16 },
-    { name: "Feasts", value: 8 },
-  ],
-  topVendors: [
-    { name: "Melenzane", orders: 842 },
-    { name: "Harbor Cafe", orders: 716 },
-    { name: "Palm Leaf", orders: 628 },
-    { name: "City Buffet", orders: 504 },
-    { name: "Golden Tray", orders: 448 },
-  ],
+const SERVICE_LABELS: Record<string, string> = {
+  catering: "Catering",
+  delivery: "Delivery",
+  setups: "Setups",
+  hospitality: "Hospitality",
+  feasts: "Feasts",
 };
+
+const SERVICE_ORDER = [
+  "catering",
+  "delivery",
+  "setups",
+  "hospitality",
+  "feasts",
+] as const;
 
 function toNumber(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -144,9 +141,79 @@ export function formatStatValue(stat: DashboardStat) {
   return new Intl.NumberFormat("en-US").format(stat.value);
 }
 
-/** GET /admin/dashboardgeneralstats — charts stay local until a charts API exists. */
+function mapCategoryShare(data: Awaited<ReturnType<typeof getVendorServiceOrderStats>>) {
+  const byService = data.byService ?? {};
+  const counts = SERVICE_ORDER.map((key) => ({
+    key,
+    count: toNumber(byService[key]),
+  }));
+  const total =
+    toNumber(data.totalOrders) ||
+    counts.reduce((sum, entry) => sum + entry.count, 0);
+
+  return counts.map(({ key, count }) => ({
+    name: SERVICE_LABELS[key] ?? key,
+    value:
+      total > 0 ? Math.round((count / total) * 1000) / 10 : count,
+  }));
+}
+
+function mapSignupTrends(data: Awaited<ReturnType<typeof getCustomerSignupStats>>) {
+  return (data.monthly ?? []).map((item) => ({
+    month: item.month?.trim() || item.label?.trim() || "—",
+    orders: 0,
+    income: 0,
+    signups: toNumber(item.count),
+  }));
+}
+
+function vendorLabelFromStats(item: TopVendorStatsItem) {
+  if (typeof item.name === "string" && item.name.trim()) {
+    return item.name.trim();
+  }
+  if (item.name && typeof item.name === "object") {
+    const en = item.name.en?.trim();
+    const ar = item.name.ar?.trim();
+    if (en && ar) return `${en} / ${ar}`;
+    return en || ar || "";
+  }
+  return item.englishName?.trim() || item.arabicName?.trim() || "Vendor";
+}
+
+function mapTopVendors(data: Awaited<ReturnType<typeof getTopVendorOrderStats>>) {
+  return (data.topVendors ?? []).map((item) => ({
+    name: vendorLabelFromStats(item),
+    orders:
+      toNumber(item.orderCount) ||
+      toNumber(item.orders) ||
+      toNumber(item.count) ||
+      toNumber(item.numberOfOrders),
+  }));
+}
+
+async function fetchDashboardCharts(): Promise<DashboardCharts> {
+  const [vendorService, signups, topVendors] = await Promise.all([
+    getVendorServiceOrderStats(),
+    getCustomerSignupStats(),
+    getTopVendorOrderStats(),
+  ]);
+
+  return {
+    trends: mapSignupTrends(signups),
+    categoryShare: mapCategoryShare(vendorService),
+    topVendors: mapTopVendors(topVendors),
+    ordersByServiceMonth: vendorService.month?.trim(),
+    topVendorsMonth: topVendors.month?.trim(),
+    signupsPeriod: signups.period?.trim(),
+  };
+}
+
+/** GET /admin/dashboardgeneralstats + order-stats chart endpoints */
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  const stats = await getDashboardGeneralStats();
+  const [stats, charts] = await Promise.all([
+    getDashboardGeneralStats(),
+    fetchDashboardCharts(),
+  ]);
   const values: Record<string, number> = {
     "active-vendors": toNumber(stats.activeVendors),
     "orders-month": toNumber(stats.ordersLastMonth),
@@ -157,19 +224,19 @@ export async function fetchDashboardSummary(): Promise<DashboardSummary> {
     "signups-total": toNumber(stats.totalSignups),
   };
 
+  const periodLabel =
+    charts.ordersByServiceMonth ||
+    charts.topVendorsMonth ||
+    charts.signupsPeriod ||
+    "Last month";
+
   return {
-    periodLabel: "Last month",
+    periodLabel,
     stats: STAT_CARDS.map((stat) => ({
       ...stat,
       value: values[stat.id] ?? 0,
     })),
     analysis: MOCK_ANALYSIS_LINKS.map((link) => ({ ...link })),
-    charts: {
-      trends: MOCK_DASHBOARD_CHARTS.trends.map((point) => ({ ...point })),
-      categoryShare: MOCK_DASHBOARD_CHARTS.categoryShare.map((item) => ({
-        ...item,
-      })),
-      topVendors: MOCK_DASHBOARD_CHARTS.topVendors.map((item) => ({ ...item })),
-    },
+    charts,
   };
 }

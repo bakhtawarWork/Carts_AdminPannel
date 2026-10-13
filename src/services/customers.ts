@@ -80,3 +80,109 @@ export async function getCustomers(query: CustomersListQueryParams) {
     },
   };
 }
+
+export type CustomerMoneySpentApiItem = {
+  _id?: string;
+  total?: number;
+  count?: number;
+};
+
+export type CustomerUserDetailsApi = {
+  _id?: string;
+  id?: string;
+  smsVerified?: boolean;
+  isBlocked?: boolean;
+  name?: string;
+  email?: string;
+  mobile?: string;
+  createdAt?: string;
+  preferredLanguage?: string;
+  totalNoOfOrders?: number;
+  successfulOrders?: number;
+  cancelledOrders?: number;
+  activeOrders?: number;
+  rejectedOrders?: number;
+  totalMoneySpent?: CustomerMoneySpentApiItem[] | number;
+};
+
+export type CustomerOrderDetailsApiResponse = {
+  status?: boolean;
+  message?: string | { userDetails?: CustomerUserDetailsApi };
+  data?: string;
+};
+
+/** GET /admin/customers/:id/order-details */
+export async function getCustomerOrderDetails(id: string) {
+  const payload = await api.get<CustomerOrderDetailsApiResponse>(
+    CUSTOMER_ENDPOINTS.orderDetails(id),
+  );
+
+  if (payload?.status === false) {
+    const failureMessage =
+      typeof payload.message === "string"
+        ? payload.message
+        : "Could not load customer profile.";
+    throw new ApiError(failureMessage, 400, payload);
+  }
+
+  const userDetails =
+    typeof payload.message === "object" && payload.message !== null
+      ? payload.message.userDetails
+      : undefined;
+
+  if (!userDetails) {
+    throw new ApiError("Customer profile was not returned.", 200, payload);
+  }
+
+  return userDetails;
+}
+
+export type CustomerOrderPaymentApi = {
+  method?: string;
+  totalPrice?: number;
+  status?: string;
+  subTotalPrice?: number;
+  deliveryCost?: number;
+  cartsPercentage?: number;
+  redeemedPoints?: number;
+  rewardDiscountAmount?: number;
+  awardedPoints?: number;
+};
+
+export type CustomerOrderApiItem = {
+  _id?: string;
+  id?: string;
+  orderId?: string | number;
+  status?: string;
+  eventDate?: string;
+  createdAt?: string;
+  payment?: CustomerOrderPaymentApi;
+};
+
+export type CustomerOrdersApiResponse = {
+  status?: boolean;
+  message?: string | { orders?: CustomerOrderApiItem[] };
+  data?: string;
+};
+
+/** GET /admin/customers/:id/orders */
+export async function getCustomerOrders(customerId: string) {
+  const payload = await api.get<CustomerOrdersApiResponse>(
+    CUSTOMER_ENDPOINTS.orders(customerId),
+  );
+
+  if (payload?.status === false) {
+    const failureMessage =
+      typeof payload.message === "string"
+        ? payload.message
+        : "Could not load customer orders.";
+    throw new ApiError(failureMessage, 400, payload);
+  }
+
+  const orders =
+    typeof payload.message === "object" && payload.message !== null
+      ? payload.message.orders ?? []
+      : [];
+
+  return orders;
+}
