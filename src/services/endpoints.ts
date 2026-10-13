@@ -53,9 +53,13 @@ export const PROMO_CODE_ENDPOINTS = {
   delete: "promocode/delete",
 } as const;
 
+export const UPLOAD_ENDPOINTS = {
+  images: "uploads/images",
+} as const;
+
 export const BANNER_ENDPOINTS = {
   list: "banners",
-  create: "banners",
+  create: "banners/v2",
   details: (id: string) => `banners/${id}`,
   update: (id: string) => `banners/${id}`,
   status: (id: string) => `banners/${id}/status`,

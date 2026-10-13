@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmDialog } from "@/components/popular-collections/PopularCollectionsView";
 import {
   deleteBanner,
   fetchBanners,
@@ -19,7 +20,8 @@ export default function AllBannersView() {
   const [items, setItems] = useState<BannerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BannerRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   async function load(nextFilter: BannerFilter = filter) {
@@ -71,20 +73,21 @@ export default function AllBannersView() {
     }
   }
 
-  async function handleDelete(banner: BannerRecord) {
-    const confirmed = window.confirm(`Delete banner "${banner.name}"?`);
-    if (!confirmed) return;
+  async function confirmDelete() {
+    if (!deleteTarget) return;
 
-    setDeletingId(banner.id);
+    setDeleting(true);
+    setError(null);
     try {
-      await deleteBanner(banner.id);
+      await deleteBanner(deleteTarget.id);
+      setDeleteTarget(null);
       await load(filter);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not delete banner.",
       );
     } finally {
-      setDeletingId(null);
+      setDeleting(false);
     }
   }
 
@@ -229,11 +232,13 @@ export default function AllBannersView() {
                     </Link>
                     <button
                       type="button"
-                      disabled={deletingId === banner.id}
-                      onClick={() => void handleDelete(banner)}
+                      disabled={deleting && deleteTarget?.id === banner.id}
+                      onClick={() => setDeleteTarget(banner)}
                       className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-60"
                     >
-                      {deletingId === banner.id ? "Deleting…" : "Delete"}
+                      {deleting && deleteTarget?.id === banner.id
+                        ? "Deleting…"
+                        : "Delete"}
                     </button>
                   </div>
                 </div>
@@ -253,6 +258,19 @@ export default function AllBannersView() {
           ))}
         </div>
       )}
+
+      {deleteTarget ? (
+        <ConfirmDialog
+          title="Delete banner?"
+          body={`This will permanently remove "${deleteTarget.name}". This action cannot be undone.`}
+          busy={deleting}
+          confirmLabel="Delete"
+          onCancel={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+          onConfirm={() => void confirmDelete()}
+        />
+      ) : null}
     </div>
   );
 }

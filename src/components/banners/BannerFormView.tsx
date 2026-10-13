@@ -11,12 +11,20 @@ import {
   createEmptyBannerForm,
   fetchBannerById,
   formatBannerTypeLabel,
+  platformImageFieldFromAsset,
   saveBannerForm,
   updateBannerForm,
   validateBannerForm,
+  formatBannerAspectRatioRange,
+  IOS_MAIN_BANNER_MAX_ASPECT_RATIO,
+  IOS_MAIN_BANNER_MIN_ASPECT_RATIO,
+  MAIN_BANNER_MAX_ASPECT_RATIO,
+  MAIN_BANNER_MIN_ASPECT_RATIO,
+  SUB_BANNER_MAX_ASPECT_RATIO,
+  SUB_BANNER_MIN_ASPECT_RATIO,
   validateBannerImageFile,
+  validateBannerIosImageFile,
 } from "@/lib/banners";
-import { readImageFileAsDataUrl } from "@/lib/offering-image-upload";
 import { getOfferingDetails, getVendorOfferings } from "@/services/offerings";
 import type { BannerFormData, BannerType } from "@/lib/types";
 
@@ -94,7 +102,8 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
           type: record.type,
           name: record.name,
           nameAr: record.nameAr ?? "",
-          imageUrl: record.imageUrl,
+          androidImage: platformImageFieldFromAsset(record.androidImage),
+          iosImage: platformImageFieldFromAsset(record.iosImage),
           sequence: String(record.sequence),
           isActive: record.isActive,
           redirectionPath,
@@ -178,24 +187,30 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
     setError(null);
   }
 
-  async function onImageChange(file: File | undefined) {
+  async function onPlatformImageChange(
+    platform: "android" | "ios",
+    file: File | undefined,
+  ) {
     if (!file) return;
-    const validation = await validateBannerImageFile(file, form.type);
+    const validation =
+      platform === "android"
+        ? await validateBannerImageFile(file, form.type)
+        : await validateBannerIosImageFile(file, form.type);
     if (validation) {
       setError(validation);
       return;
     }
-    try {
-      const url = await readImageFileAsDataUrl(file);
-      setForm((prev) => ({
-        ...prev,
-        imageUrl: url,
-        imageFileName: file.name,
-        imageFileType: file.type || "image/jpeg",
-      }));
-    } catch {
-      setError("Could not read image file.");
-    }
+    const fieldKey = platform === "android" ? "androidImage" : "iosImage";
+    const previewUrl = URL.createObjectURL(file);
+    setForm((prev) => ({
+      ...prev,
+      [fieldKey]: {
+        previewUrl,
+        pendingFile: file,
+        uploaded: null,
+      },
+    }));
+    setError(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -256,46 +271,7 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
           </h3>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <div>
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-600">
-              Image
-            </p>
-            <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-              {form.imageUrl ? (
-                <Image
-                  src={form.imageUrl}
-                  alt={form.name || "Banner preview"}
-                  fill
-                  unoptimized
-                  className="object-cover"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center px-3 text-center text-xs text-slate-400">
-                  Upload a banner image
-                </div>
-              )}
-            </div>
-            <label className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
-              Upload image
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                className="hidden"
-                onChange={(event) => {
-                  void onImageChange(event.target.files?.[0]);
-                  event.target.value = "";
-                }}
-              />
-            </label>
-            <p className="mt-2 text-xs text-slate-500">
-              {form.type === "main"
-                ? "Required aspect ratio: 1.10:1 – 1.40:1"
-                : "Required aspect ratio: 2.70:1 – 3.50:1"}
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Banner type">
               <select
                 value={form.type}
@@ -468,6 +444,39 @@ export default function BannerFormView({ bannerId }: BannerFormViewProps = {}) {
                 </span>
               </label>
             </Field>
+        </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-6">
+          <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-600">
+            Banner images (required)
+          </p>
+          <div className="grid gap-6 sm:grid-cols-2">
+            <PlatformImageUpload
+              label="Android image"
+              previewUrl={form.androidImage.previewUrl}
+              inputId="banner-android-image"
+              hint={
+                form.type === "main"
+                  ? `Aspect ratio: ${formatBannerAspectRatioRange(MAIN_BANNER_MIN_ASPECT_RATIO, MAIN_BANNER_MAX_ASPECT_RATIO)}`
+                  : `Aspect ratio: ${formatBannerAspectRatioRange(SUB_BANNER_MIN_ASPECT_RATIO, SUB_BANNER_MAX_ASPECT_RATIO)}`
+              }
+              onFileSelected={(file) => {
+                void onPlatformImageChange("android", file);
+              }}
+            />
+            <PlatformImageUpload
+              label="iOS image"
+              previewUrl={form.iosImage.previewUrl}
+              inputId="banner-ios-image"
+              hint={
+                form.type === "main"
+                  ? `Aspect ratio: ${formatBannerAspectRatioRange(IOS_MAIN_BANNER_MIN_ASPECT_RATIO, IOS_MAIN_BANNER_MAX_ASPECT_RATIO)} (1680×2164 dp)`
+                  : `Aspect ratio: ${formatBannerAspectRatioRange(SUB_BANNER_MIN_ASPECT_RATIO, SUB_BANNER_MAX_ASPECT_RATIO)}`
+              }
+              onFileSelected={(file) => {
+                void onPlatformImageChange("ios", file);
+              }}
+            />
           </div>
         </div>
 
@@ -511,5 +520,57 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function PlatformImageUpload({
+  label,
+  previewUrl,
+  inputId,
+  hint,
+  onFileSelected,
+}: {
+  label: string;
+  previewUrl: string;
+  inputId: string;
+  hint?: string;
+  onFileSelected: (file: File | undefined) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-medium text-slate-700">{label}</p>
+      <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+        {previewUrl ? (
+          <Image
+            src={previewUrl}
+            alt={label}
+            fill
+            unoptimized
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-3 text-center text-xs text-slate-400">
+            Upload {label.toLowerCase()}
+          </div>
+        )}
+      </div>
+      <label
+        htmlFor={inputId}
+        className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+      >
+        Choose file
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => {
+          onFileSelected(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+      {hint ? <p className="mt-2 text-xs text-slate-500">{hint}</p> : null}
+    </div>
   );
 }

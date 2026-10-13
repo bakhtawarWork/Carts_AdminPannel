@@ -18,6 +18,8 @@ export type BannerApiItem = {
   position: number;
   destination?: string;
   image?: BannerApiImage;
+  androidImage?: BannerApiImage;
+  iosImage?: BannerApiImage;
   status: "active" | "inactive";
   _deleted?: boolean;
   actionType?: string;
@@ -40,11 +42,13 @@ export type CreateBannerPayload = {
   status: "active" | "inactive";
   actionType?: string;
   referenceId?: string | null;
-  image: {
+  image?: {
     name: string;
     value: string;
     type: string;
   };
+  androidImage?: BannerApiImage;
+  iosImage?: BannerApiImage;
 };
 
 export type UpdateBannerPayload = Partial<CreateBannerPayload>;

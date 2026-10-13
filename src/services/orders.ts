@@ -247,7 +247,7 @@ export async function reviewCancellationRequest(
   orderId: string | number,
   payload: ReviewCancellationPayload,
 ) {
-  const data = await api.post<ReviewCancellationApiResponse>(
+  const data = await api.put<ReviewCancellationApiResponse>(
     ORDER_ENDPOINTS.reviewCancellation(orderId),
     payload,
   );

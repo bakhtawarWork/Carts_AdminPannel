@@ -12,6 +12,8 @@ import {
   updateBanner,
   updateBannerStatus,
 } from "@/services/banners";
+import { uploadBannerImage } from "@/services/uploads";
+import type { BannerImageAsset, BannerPlatformImageField } from "@/lib/types";
 
 export const BANNER_IMAGE_WIDTH = 375;
 export const BANNER_IMAGE_HEIGHT = 335;
@@ -39,10 +41,16 @@ export function mapApiBannerToRecord(item: BannerApiItem): BannerRecord {
       ? item.name.ar
       : undefined;
 
+  const androidImage = mapImageAsset(item.androidImage) ?? mapImageAsset(item.image);
+  const iosImage = mapImageAsset(item.iosImage);
+
   const imageUrl =
+    androidImage?.cdnUrl ||
+    androidImage?.url ||
     item.image?.cdnUrl ||
     (item as { cdnUrl?: string }).cdnUrl ||
     item.image?.url ||
+    iosImage?.cdnUrl ||
     (typeof item.image === "string" ? item.image : "");
 
   let redirectionPath: string | undefined = undefined;
@@ -81,6 +89,8 @@ export function mapApiBannerToRecord(item: BannerApiItem): BannerRecord {
     name: nameEn || nameAr || "Untitled Banner",
     nameAr,
     imageUrl,
+    androidImage,
+    iosImage,
     sequence: item.position ?? 1,
     isActive: item.status === "active",
     redirectionPath,
@@ -91,18 +101,82 @@ export function mapApiBannerToRecord(item: BannerApiItem): BannerRecord {
   };
 }
 
+function emptyPlatformImageField(): BannerPlatformImageField {
+  return {
+    previewUrl: "",
+    pendingFile: null,
+    uploaded: null,
+  };
+}
+
+function mapImageAsset(image?: {
+  key?: string;
+  url?: string;
+  cdnUrl?: string;
+  filename?: string;
+}): BannerImageAsset | null {
+  if (!image?.key || !image.url || !image.cdnUrl || !image.filename) {
+    return null;
+  }
+  return {
+    key: image.key,
+    url: image.url,
+    cdnUrl: image.cdnUrl,
+    filename: image.filename,
+  };
+}
+
+export function platformImageFieldFromAsset(
+  asset: BannerImageAsset | null | undefined,
+): BannerPlatformImageField {
+  if (!asset) {
+    return emptyPlatformImageField();
+  }
+  return {
+    previewUrl: asset.cdnUrl || asset.url,
+    pendingFile: null,
+    uploaded: asset,
+  };
+}
+
 export function createEmptyBannerForm(type: BannerType = "main"): BannerFormData {
   return {
     type,
     name: "",
     nameAr: "",
-    imageUrl: "",
+    androidImage: emptyPlatformImageField(),
+    iosImage: emptyPlatformImageField(),
     sequence: "1",
     isActive: true,
     redirectionPath: "",
     selectedVendorId: "",
     selectedOfferingId: "",
   };
+}
+
+async function resolvePlatformImageAsset(
+  field: BannerPlatformImageField,
+  platformLabel: "Android" | "iOS",
+): Promise<BannerImageAsset> {
+  if (field.pendingFile) {
+    const uploaded = await uploadBannerImage(field.pendingFile);
+    return {
+      key: uploaded.key,
+      url: uploaded.url,
+      cdnUrl: uploaded.cdnUrl,
+      filename: uploaded.filename,
+    };
+  }
+
+  if (field.uploaded) {
+    return field.uploaded;
+  }
+
+  throw new Error(`${platformLabel} banner image is required.`);
+}
+
+function hasPlatformImage(field: BannerPlatformImageField) {
+  return Boolean(field.pendingFile || field.uploaded?.key || field.previewUrl.trim());
 }
 
 export function readImageDimensions(
@@ -133,7 +207,31 @@ export const MAIN_BANNER_MAX_ASPECT_RATIO = 1.12 / 0.8; // 1.40
 export const SUB_BANNER_MIN_ASPECT_RATIO = 2.70;
 export const SUB_BANNER_MAX_ASPECT_RATIO = 2.80 / 0.8; // 3.50
 
-/** File type/size + aspect ratio validation for main and sub banner uploads. */
+/** iOS main banner design size (dp); width ÷ height ≈ 0.78:1 */
+export const IOS_MAIN_BANNER_WIDTH_DP = 1680;
+export const IOS_MAIN_BANNER_HEIGHT_DP = 2164;
+export const IOS_MAIN_BANNER_MAX_ASPECT_RATIO =
+  IOS_MAIN_BANNER_WIDTH_DP / IOS_MAIN_BANNER_HEIGHT_DP;
+/** Same relative slack below target as Android main (1.10 vs ~1.12). */
+export const IOS_MAIN_BANNER_MIN_ASPECT_RATIO =
+  IOS_MAIN_BANNER_MAX_ASPECT_RATIO * (MAIN_BANNER_MIN_ASPECT_RATIO / 1.12);
+
+export function formatBannerAspectRatioRange(min: number, max: number) {
+  return `${min.toFixed(2)}:1 – ${max.toFixed(2)}:1`;
+}
+
+function validateSubBannerAspectRatio(
+  ratio: number,
+  width: number,
+  height: number,
+): string | null {
+  if (ratio <= SUB_BANNER_MIN_ASPECT_RATIO || ratio > SUB_BANNER_MAX_ASPECT_RATIO) {
+    return `Sub banner aspect ratio must be greater than 2.70:1 and up to 3.50:1 (uploaded image is ${width}×${height}px, ratio ${ratio.toFixed(2)}:1).`;
+  }
+  return null;
+}
+
+/** File type/size + aspect ratio validation for Android main and sub banner uploads. */
 export async function validateBannerImageFile(
   file: File,
   type: BannerType = "main",
@@ -154,9 +252,42 @@ export async function validateBannerImageFile(
         return `Main banner aspect ratio must be greater than 1.10:1 and up to 1.40:1 (uploaded image is ${width}×${height}px, ratio ${ratio.toFixed(2)}:1).`;
       }
     } else {
-      if (ratio <= SUB_BANNER_MIN_ASPECT_RATIO || ratio > SUB_BANNER_MAX_ASPECT_RATIO) {
-        return `Sub banner aspect ratio must be greater than 2.70:1 and up to 3.50:1 (uploaded image is ${width}×${height}px, ratio ${ratio.toFixed(2)}:1).`;
+      return validateSubBannerAspectRatio(ratio, width, height);
+    }
+  } catch {
+    return "Could not read image dimensions. Please try another file.";
+  }
+
+  return null;
+}
+
+/** File type/size + aspect ratio validation for iOS main and sub banner uploads. */
+export async function validateBannerIosImageFile(
+  file: File,
+  type: BannerType = "main",
+): Promise<string | null> {
+  const fileError = validateOfferingImageFile(file);
+  if (fileError) return fileError;
+
+  try {
+    const { width, height } = await readImageDimensions(file);
+    if (!width || !height) {
+      return "Could not determine image dimensions.";
+    }
+
+    const ratio = width / height;
+
+    if (type === "main") {
+      const minLabel = IOS_MAIN_BANNER_MIN_ASPECT_RATIO.toFixed(2);
+      const maxLabel = IOS_MAIN_BANNER_MAX_ASPECT_RATIO.toFixed(2);
+      if (
+        ratio <= IOS_MAIN_BANNER_MIN_ASPECT_RATIO ||
+        ratio > IOS_MAIN_BANNER_MAX_ASPECT_RATIO
+      ) {
+        return `iOS main banner aspect ratio must be greater than ${minLabel}:1 and up to ${maxLabel}:1 (1680×2164 dp, uploaded image is ${width}×${height}px, ratio ${ratio.toFixed(2)}:1).`;
       }
+    } else {
+      return validateSubBannerAspectRatio(ratio, width, height);
     }
   } catch {
     return "Could not read image dimensions. Please try another file.";
@@ -205,7 +336,12 @@ export function formatBannerRedirectionLabel(path?: unknown): string {
 
 export function validateBannerForm(data: BannerFormData): string | null {
   if (!data.name.trim()) return "Banner name is required.";
-  if (!data.imageUrl.trim()) return "Banner image is required.";
+  if (!hasPlatformImage(data.androidImage)) {
+    return "Android banner image is required.";
+  }
+  if (!hasPlatformImage(data.iosImage)) {
+    return "iOS banner image is required.";
+  }
 
   const sequence = Number(data.sequence);
   if (!Number.isFinite(sequence) || sequence < 1 || !Number.isInteger(sequence)) {
@@ -254,6 +390,11 @@ export async function saveBannerForm(
   const englishName = data.name.trim();
   const arabicName = data.nameAr?.trim() || englishName;
 
+  const [androidImage, iosImage] = await Promise.all([
+    resolvePlatformImageAsset(data.androidImage, "Android"),
+    resolvePlatformImageAsset(data.iosImage, "iOS"),
+  ]);
+
   const payload: CreateBannerPayload = {
     name: {
       en: englishName,
@@ -262,11 +403,8 @@ export async function saveBannerForm(
     type: data.type,
     position: Number(data.sequence) || 1,
     status: data.isActive ? "active" : "inactive",
-    image: {
-      name: data.imageFileName || "banner.jpg",
-      value: data.imageUrl.trim(),
-      type: data.imageFileType || "image/jpeg",
-    },
+    androidImage,
+    iosImage,
   };
 
   if (data.type === "sub") {
@@ -310,6 +448,11 @@ export async function updateBannerForm(
   const englishName = data.name.trim();
   const arabicName = data.nameAr?.trim() || englishName;
 
+  const [androidImage, iosImage] = await Promise.all([
+    resolvePlatformImageAsset(data.androidImage, "Android"),
+    resolvePlatformImageAsset(data.iosImage, "iOS"),
+  ]);
+
   const payload: UpdateBannerPayload = {
     name: {
       en: englishName,
@@ -338,13 +481,8 @@ export async function updateBannerForm(
     payload.referenceId = null;
   }
 
-  if (data.imageUrl.startsWith("data:")) {
-    payload.image = {
-      name: data.imageFileName || "banner.jpg",
-      value: data.imageUrl.trim(),
-      type: data.imageFileType || "image/jpeg",
-    };
-  }
+  payload.androidImage = androidImage;
+  payload.iosImage = iosImage;
 
   const updated = await updateBanner(id, payload);
   if (!updated) {

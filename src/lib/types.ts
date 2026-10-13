@@ -890,6 +890,8 @@ export type BannerRecord = {
   name: string;
   nameAr?: string;
   imageUrl: string;
+  androidImage?: BannerImageAsset | null;
+  iosImage?: BannerImageAsset | null;
   sequence: number;
   isActive: boolean;
   redirectionPath?: string;
@@ -899,17 +901,29 @@ export type BannerRecord = {
   updatedAt: string;
 };
 
+export type BannerImageAsset = {
+  url: string;
+  cdnUrl: string;
+  key: string;
+  filename: string;
+};
+
+export type BannerPlatformImageField = {
+  previewUrl: string;
+  pendingFile?: File | null;
+  uploaded?: BannerImageAsset | null;
+};
+
 export type BannerFormData = {
   type: BannerType;
   name: string;
   nameAr?: string;
-  imageUrl: string;
+  androidImage: BannerPlatformImageField;
+  iosImage: BannerPlatformImageField;
   sequence: string;
   isActive: boolean;
   redirectionPath: string;
   selectedVendorId?: string;
   selectedOfferingId?: string;
-  imageFileName?: string;
-  imageFileType?: string;
 };
 
