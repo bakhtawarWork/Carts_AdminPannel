@@ -11,7 +11,9 @@ import {
   OFFERING_TYPE_OPTIONS,
   saveAndApproveOfferingForm,
   saveVendorOfferingForm,
+  toUpdateOfferingPayload,
 } from "@/lib/offering-form";
+import { updateOffering } from "@/services/offerings";
 import {
   formatOfferingCategoryLabel,
   listOfferingCategories,
@@ -176,6 +178,35 @@ export default function OfferingFormView({
           : isApprovalMode
             ? "Could not save and approve offering."
             : "Could not save offering.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveOnly() {
+    if (!form) return;
+
+    if (!form.englishName.trim() || !form.arabicName.trim()) {
+      setError("English and Arabic names are required.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const targetId = form.approvalId || form.offeringId;
+      if (!targetId) {
+        throw new Error("Approval id is required.");
+      }
+
+      await updateOffering(targetId, toUpdateOfferingPayload(form));
+      router.push("/vendors/offering-approval");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not save offering.",
       );
     } finally {
       setSaving(false);
@@ -590,12 +621,22 @@ export default function OfferingFormView({
           >
             Cancel
           </Link>
+          {isApprovalMode ? (
+            <button
+              type="button"
+              onClick={handleSaveOnly}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          ) : null}
           <button
             type="submit"
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Saving…" : submitLabel}
+            {saving ? (isApprovalMode ? "Approving…" : "Saving…") : submitLabel}
           </button>
         </div>
       </div>

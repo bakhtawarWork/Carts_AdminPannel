@@ -110,7 +110,7 @@ export async function fetchOfferingApprovals(
   };
 }
 
-function removeLocalApproval(id: string) {
+export function removeLocalApproval(id: string) {
   approvalCache.delete(id);
   offeringApprovalsState = offeringApprovalsState.filter(
     (item) => item.id !== id,

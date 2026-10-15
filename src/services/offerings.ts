@@ -465,6 +465,13 @@ export type UpdateOfferingPayload = {
   food: CreateOfferingNamedItem[];
   requirements: CreateOfferingNamedItem[];
   notes: CreateOfferingNamedItem[];
+  drinks?: CreateOfferingNamedItem[];
+  presentation?: CreateOfferingNamedItem[];
+  decorations?: CreateOfferingNamedItem[];
+  furniture?: CreateOfferingNamedItem[];
+  equipment?: CreateOfferingNamedItem[];
+  serviceAvailability?: number;
+  serviceAvailabilitySharedCode?: string;
   collectionIds: string[];
   images: UpdateOfferingExistingImage[];
   deletedImageKeys: string[];

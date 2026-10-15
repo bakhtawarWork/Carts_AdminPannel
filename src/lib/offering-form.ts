@@ -1,4 +1,4 @@
-import { approveOfferingApproval } from "@/lib/offering-approval";
+import { removeLocalApproval } from "@/lib/offering-approval";
 import { upsertVendorOfferingFromForm } from "@/lib/vendor-offerings";
 import type {
   OfferingBilingualLine,
@@ -126,6 +126,21 @@ function vendorIdFromDetail(detail: OfferingDetailApiItem, fallback?: string) {
   }
   if (detail._vendor && typeof detail._vendor === "object" && detail._vendor._id) {
     return detail._vendor._id;
+  }
+  const anyDetail = detail as Record<string, unknown>;
+  if (typeof anyDetail.vendor === "string" && anyDetail.vendor.trim()) {
+    return anyDetail.vendor.trim();
+  }
+  if (
+    anyDetail.vendor &&
+    typeof anyDetail.vendor === "object" &&
+    "_id" in anyDetail.vendor &&
+    typeof anyDetail.vendor._id === "string"
+  ) {
+    return anyDetail.vendor._id.trim();
+  }
+  if (typeof anyDetail.vendorId === "string" && anyDetail.vendorId.trim()) {
+    return anyDetail.vendorId.trim();
   }
   return fallback ?? "";
 }
@@ -562,6 +577,13 @@ export function toUpdateOfferingPayload(
     food: toNamedLines(data.includedFood),
     requirements: toNamedLines(data.requirements),
     notes: toNamedLines(data.notes),
+    drinks: toNamedLines(data.drinks),
+    presentation: toNamedLines(data.presentation),
+    decorations: toNamedLines(data.decorations),
+    furniture: toNamedLines(data.furniture),
+    equipment: toNamedLines(data.equipment),
+    serviceAvailability: toAvailability(data.serviceAvailability),
+    serviceAvailabilitySharedCode: data.serviceAvailabilityCode.trim(),
     collectionIds: Array.isArray(data.collectionIds) ? data.collectionIds : [],
     images: toExistingImagesPayload(data.gallery),
     deletedImageKeys,
@@ -587,28 +609,40 @@ export async function saveVendorOfferingForm(data: OfferingFormData) {
   return saved;
 }
 
-/** Swap for a real API call when available. */
+/**
+ * Update offering approval:
+ * PUT https://carts.reapmind.com/admin/offerings/:id
+ * Body: { approveStatus: "approved", ...updatedData }
+ */
 export async function saveAndApproveOfferingForm(data: OfferingFormData) {
-  const targetId = data.offeringId || data.approvalId;
+  const targetId = data.approvalId || data.offeringId;
   if (!targetId) {
     throw new Error("Approval id is required.");
   }
 
-  if (data.offeringId) {
-    const payload = toUpdateOfferingPayload(data);
-    await updateOffering(data.offeringId, payload);
-  }
+  const payload: UpdateOfferingPayload = {
+    ...toUpdateOfferingPayload(data),
+    approveStatus: "approved",
+  };
 
-  if (data.approvalId) {
-    await approveOfferingApproval(data.approvalId);
-  }
+  const response = await updateOffering(targetId, payload);
+  removeLocalApproval(targetId);
+
+  const updatedFormData: OfferingFormData = {
+    ...data,
+    offeringId: targetId,
+    approveStatus: "approved",
+  };
 
   const key = `${data.vendorId}:${targetId}`;
-  offeringFormsByKey[key] = structuredClone(data);
+  offeringFormsByKey[key] = structuredClone(updatedFormData);
   if (data.offeringId) {
     offeringFormsByKey[formStorageKey(data.vendorId, data.offeringId)] =
-      structuredClone(data);
-    upsertVendorOfferingFromForm({ ...data, offeringId: data.offeringId });
+      structuredClone(updatedFormData);
+    upsertVendorOfferingFromForm({
+      ...updatedFormData,
+      offeringId: data.offeringId,
+    });
   }
-  return true;
+  return response;
 }
