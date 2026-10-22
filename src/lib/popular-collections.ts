@@ -186,7 +186,6 @@ export function subCollectionToFormData(
 export function validateCollectionForm(form: PopularCollectionFormData) {
   if (!form.englishName.trim()) return "English name is required.";
   if (!form.arabicName.trim()) return "Arabic name is required.";
-  if (!form.serviceCategoryId) return "Select a service category.";
   if (!form.imageUrl.trim() && !form.imageFile) return "Select an image.";
   return null;
 }
